@@ -11,7 +11,9 @@
 node -v   # 期望 v22.x
 cp .env.example .env
 pnpm install
-pnpm compose:up          # PostgreSQL + Redis
+pnpm compose:up          # PostgreSQL + Redis（口令见 compose / ops 文档）
+pnpm db:migrate          # 需根目录 .env 含 DATABASE_URL
+pnpm db:generate
 pnpm run ci
 pnpm dev:api             # :3000
 pnpm dev:web             # :5173
