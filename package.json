@@ -11,7 +11,15 @@
   "scripts": {
     "check:node": "node -e \"const m=+process.versions.node.split('.')[0]; if(m!==22){console.error('Require Node.js 22, got',process.version); process.exit(1)}; console.log('Node',process.version)\"",
     "check:docs": "node scripts/check-docs.mjs",
-    "ci": "pnpm run check:node && pnpm run check:docs"
+    "dev:api": "pnpm --filter @yuque1/api dev",
+    "dev:web": "pnpm --filter @yuque1/web dev",
+    "build": "pnpm --filter @yuque1/api build && pnpm --filter @yuque1/web build",
+    "typecheck": "pnpm --filter @yuque1/api typecheck && pnpm --filter @yuque1/web typecheck",
+    "test": "pnpm --filter @yuque1/api test && pnpm --filter @yuque1/web test",
+    "prisma:generate": "pnpm --filter @yuque1/api prisma:generate",
+    "compose:up": "docker compose -f deploy/compose/docker-compose.yml up -d",
+    "compose:down": "docker compose -f deploy/compose/docker-compose.yml down",
+    "ci": "pnpm run check:node && pnpm run check:docs && pnpm run prisma:generate && pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "license": "UNLICENSED"
 }

@@ -5,12 +5,19 @@
 ## 运行时
 
 - **Node.js 22**（见 `.nvmrc` / `package.json#engines`）
-- 包管理：pnpm 9（规划中 monorepo）
+- 包管理：**pnpm 9 monorepo**（`apps/web` + `apps/api`）
 
 ```bash
 node -v   # 期望 v22.x
+cp .env.example .env
+pnpm install
+pnpm compose:up          # PostgreSQL + Redis
 pnpm run ci
+pnpm dev:api             # :3000
+pnpm dev:web             # :5173
 ```
+
+详见 [本地开发与 M0](./docs/ops/本地开发与M0.md)。
 
 ## 文档
 
@@ -22,6 +29,7 @@ pnpm run ci
 | [总体技术方案](./docs/design/00-总体技术方案.md) | 架构与选型 |
 | [领域模型与数据库](./docs/design/01-领域模型与数据库.md) | 表结构与聚合 |
 | [OpenAPI 契约](./docs/api/openapi.yaml) | HTTP API SSOT |
+| [本地开发与 M0](./docs/ops/本地开发与M0.md) | Compose / 启动 / CI |
 
 ## 协作铁律
 

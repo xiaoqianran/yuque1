@@ -1,0 +1,167 @@
+// Align with docs/design/01-领域模型与数据库.md v1.1
+// Partial unique indexes: see migrations/*_partial_indexes/migration.sql
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @db.Char(26)
+  mobileE164     String    @unique @map("mobile_e164") @db.VarChar(20)
+  mobileVerified Boolean   @default(true) @map("mobile_verified")
+  nickname       String    @db.VarChar(64)
+  email          String?   @db.VarChar(255)
+  passwordHash   String?   @map("password_hash")
+  avatarUrl      String?   @map("avatar_url") @db.VarChar(1024)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  workspace   Workspace?
+  ownedKbs    KnowledgeBase[] @relation("KbOwner")
+  memberships KbMember[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id          String   @id @db.Char(26)
+  ownerUserId String   @unique @map("owner_user_id") @db.Char(26)
+  name        String   @db.VarChar(128)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  owner          User            @relation(fields: [ownerUserId], references: [id])
+  knowledgeBases KnowledgeBase[]
+
+  @@map("workspaces")
+}
+
+model KnowledgeBase {
+  id          String    @id @db.Char(26)
+  workspaceId String    @map("workspace_id") @db.Char(26)
+  ownerUserId String    @map("owner_user_id") @db.Char(26)
+  name        String    @db.VarChar(128)
+  description String?   @db.VarChar(2000)
+  visibility  String    @default("private")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id])
+  owner     User       @relation("KbOwner", fields: [ownerUserId], references: [id])
+  members   KbMember[]
+  nodes     TreeNode[]
+
+  @@index([workspaceId])
+  @@index([ownerUserId])
+  @@map("knowledge_bases")
+}
+
+model KbMember {
+  id              String   @id @db.Char(26)
+  knowledgeBaseId String   @map("knowledge_base_id") @db.Char(26)
+  userId          String   @map("user_id") @db.Char(26)
+  role            String
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  kb   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id])
+  user User          @relation(fields: [userId], references: [id])
+
+  @@unique([knowledgeBaseId, userId])
+  @@index([userId, knowledgeBaseId])
+  @@map("kb_members")
+}
+
+model TreeNode {
+  id              String    @id @db.Char(26)
+  knowledgeBaseId String    @map("knowledge_base_id") @db.Char(26)
+  parentId        String?   @map("parent_id") @db.Char(26)
+  type            String
+  title           String    @db.VarChar(512)
+  sortOrder       Int       @default(0) @map("sort_order")
+  createdBy       String    @map("created_by") @db.Char(26)
+  updatedBy       String?   @map("updated_by") @db.Char(26)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  kb        KnowledgeBase     @relation(fields: [knowledgeBaseId], references: [id])
+  parent    TreeNode?         @relation("NodeTree", fields: [parentId], references: [id])
+  children  TreeNode[]        @relation("NodeTree")
+  content   DocumentContent?
+  shares    ShareLink[]
+  revisions ContentRevision[]
+
+  @@index([knowledgeBaseId, parentId, sortOrder])
+  @@index([parentId])
+  @@map("tree_nodes")
+}
+
+model DocumentContent {
+  nodeId         String   @id @map("node_id") @db.Char(26)
+  bodyMd         String   @default("") @map("body_md")
+  contentVersion Int      @default(1) @map("content_version")
+  updatedBy      String?  @map("updated_by") @db.Char(26)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  node TreeNode @relation(fields: [nodeId], references: [id])
+
+  @@map("document_contents")
+}
+
+model ContentRevision {
+  id        String   @id @db.Char(26)
+  nodeId    String   @map("node_id") @db.Char(26)
+  version   Int
+  bodyMd    String   @map("body_md")
+  reason    String
+  createdBy String   @map("created_by") @db.Char(26)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  node TreeNode @relation(fields: [nodeId], references: [id])
+
+  @@index([nodeId, version])
+  @@map("content_revisions")
+}
+
+model ShareLink {
+  id        String    @id @db.Char(26)
+  token     String    @unique @db.VarChar(64)
+  nodeId    String    @map("node_id") @db.Char(26)
+  enabled   Boolean   @default(true)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdBy String    @map("created_by") @db.Char(26)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  node TreeNode @relation(fields: [nodeId], references: [id])
+
+  @@map("share_links")
+}
+
+model AuditLog {
+  id           String   @id @db.Char(26)
+  actorUserId  String?  @map("actor_user_id") @db.Char(26)
+  action       String   @db.VarChar(64)
+  resourceType String   @map("resource_type") @db.VarChar(32)
+  resourceId   String?  @map("resource_id") @db.VarChar(64)
+  metadata     Json     @default("{}")
+  requestId    String?  @map("request_id") @db.VarChar(64)
+  ip           String?  @db.VarChar(64)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([createdAt])
+  @@index([resourceType, resourceId, createdAt])
+  @@map("audit_logs")
+}

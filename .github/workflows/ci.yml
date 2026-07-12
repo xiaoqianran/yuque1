@@ -14,7 +14,7 @@ jobs:
   check:
     name: Lint & Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,21 +24,16 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Verify Node 22
-        run: |
-          node -v
-          major=$(node -p "process.versions.node.split('.')[0]")
-          test "$major" = "22"
-
       - name: Enable corepack / pnpm
-        run: corepack enable
-
-      - name: Install (no deps yet, validate package.json)
         run: |
-          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
-          node scripts/check-docs.mjs
-
-      - name: CI script
-        run: |
+          corepack enable
           corepack prepare pnpm@9.15.0 --activate
-          pnpm run ci
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: CI
+        run: pnpm run ci
+        env:
+          # Prisma generate does not need a live DB
+          DATABASE_URL: postgresql://yuque:yuque@localhost:5432/yuque1?schema=public
