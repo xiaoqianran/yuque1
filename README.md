@@ -20,6 +20,8 @@ pnpm run ci
 | [企业级前后端项目开发流程](./docs/企业级前后端项目开发流程.md) | 研发阶段与质量门禁 |
 | [产品愿景与范围](./docs/prd/00-产品愿景与范围.md) | MVP 与冻结决策 |
 | [总体技术方案](./docs/design/00-总体技术方案.md) | 架构与选型 |
+| [领域模型与数据库](./docs/design/01-领域模型与数据库.md) | 表结构与聚合 |
+| [OpenAPI 契约](./docs/api/openapi.yaml) | HTTP API SSOT |
 
 ## 协作铁律
 
