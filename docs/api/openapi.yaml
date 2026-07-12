@@ -15,7 +15,11 @@ info:
     - 业务错误使用语义化 HTTP 状态码（禁止一律 200）
     - 资源 ID：ULID 字符串（26 字符）
     - 正文：`nodeId`；overwrite 必须带 `baseVersion`
-  version: 0.1.0
+    - 正文大小：UTF-8 **字节** ≤ 2097152（超限 413）；勿用 maxLength 模拟字节
+    - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
+    - 删除类接口统一 200 + 包络（不用 204）
+    - 列表集合字段统一 `data.items`（含树扁平列表）
+  version: 0.1.1
   contact:
     name: yuque1
 
@@ -93,6 +97,7 @@ paths:
       description: |
         验证成功后创建 Session，并通过 `Set-Cookie: sid=...; HttpOnly; Path=/; SameSite=Lax; Secure(prod)` 下发。
         新用户同事务创建 User + Workspace。
+        错误码：400 `SMS_CODE_INVALID` / `VALIDATION_ERROR`；429 `SMS_RATE_LIMITED` / `AUTH_LOCKED`。
       operationId: smsLogin
       security: []
       requestBody:
@@ -154,6 +159,20 @@ paths:
       summary: 我的知识库列表
       description: 基于 `kb_members` 关联且库未软删。
       operationId: listKnowledgeBases
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
       responses:
         '200':
           description: OK
@@ -255,7 +274,7 @@ paths:
       operationId: getKbTree
       responses:
         '200':
-          description: 扁平节点列表（客户端建树）或已建树结构，MVP 返回扁平+parentId
+          description: 扁平节点列表（data.items + parentId），客户端建树
           content:
             application/json:
               schema:
@@ -305,7 +324,7 @@ paths:
       summary: 创建节点（folder 或 doc）
       description: |
         - `parentId` 可空（库根）；可为 folder 或 **doc**（doc 下挂子节点）
-        - type=doc 时同事务创建空正文 content_version=1
+        - type=doc 时同事务创建空正文 content_version=1（可立即 GET /nodes/{id}/content）
       operationId: createNode
       requestBody:
         required: true
@@ -415,6 +434,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /nodes/{nodeId}/content:
     parameters:
@@ -422,6 +443,8 @@ paths:
     get:
       tags: [Content]
       summary: 获取文档正文
+      description: |
+        仅 type=doc。folder 或其它不可访问情况统一 404 NOT_FOUND（模糊策略）。
       operationId: getNodeContent
       responses:
         '200':
@@ -439,7 +462,8 @@ paths:
       summary: 保存正文（乐观锁）
       description: |
         必须携带 `expectedVersion`；不匹配返回 409 DOC_VERSION_CONFLICT。
-        正文 UTF-8 超过 2MB → 413。
+        正文 UTF-8 **字节**超过 2MB → 413。
+        node 非 doc 时 404 NOT_FOUND。
       operationId: putNodeContent
       requestBody:
         required: true
@@ -551,7 +575,7 @@ paths:
     put:
       tags: [Share]
       summary: 开启或更新分享（启用）
-      description: 同一 node 仅一条 enabled=true；返回 token（仅此时完整可见）。
+      description: 幂等启用；同一 node 仅一条 enabled=true；返回 token（启用时完整可见）。
       operationId: enableNodeShare
       requestBody:
         required: false
@@ -644,15 +668,31 @@ components:
       maxLength: 26
       pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
       description: ULID（Crockford Base32）
-      example: '01HZYK3V8Q9EXAMPLE0000000'
+      example: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
+
+    ErrorCode:
+      type: string
+      description: 业务错误码（实现与前端以此枚举为准）
+      enum:
+        - UNAUTHORIZED
+        - NOT_FOUND
+        - VALIDATION_ERROR
+        - SMS_RATE_LIMITED
+        - SMS_CODE_INVALID
+        - AUTH_LOCKED
+        - RATE_LIMITED
+        - DOC_VERSION_CONFLICT
+        - NODE_HAS_CHILDREN
+        - NODE_CYCLE_DETECTED
+        - PAYLOAD_TOO_LARGE
+        - SHARE_INVALID
 
     ErrorBody:
       type: object
       required: [code, message]
       properties:
         code:
-          type: string
-          example: DOC_VERSION_CONFLICT
+          $ref: '#/components/schemas/ErrorCode'
         message:
           type: string
         details:
@@ -669,6 +709,7 @@ components:
           enum: [false]
         data:
           nullable: true
+          description: 恒为 null
         error:
           $ref: '#/components/schemas/ErrorBody'
         requestId:
@@ -682,6 +723,7 @@ components:
           $ref: '#/components/schemas/Ulid'
         mobileE164:
           type: string
+          pattern: '^\+[1-9]\d{6,14}$'
           example: '+8613800138000'
         nickname:
           type: string
@@ -830,6 +872,7 @@ components:
         mobileE164:
           type: string
           description: E.164
+          pattern: '^\+[1-9]\d{6,14}$'
           example: '+8613800138000'
 
     SmsLoginRequest:
@@ -838,10 +881,14 @@ components:
       properties:
         mobileE164:
           type: string
+          pattern: '^\+[1-9]\d{6,14}$'
+          description: E.164
         code:
           type: string
-          minLength: 4
-          maxLength: 8
+          pattern: '^\d{6}$'
+          minLength: 6
+          maxLength: 6
+          description: 6 位数字验证码
         nickname:
           type: string
           maxLength: 64
@@ -861,6 +908,7 @@ components:
 
     UpdateKbRequest:
       type: object
+      minProperties: 1
       properties:
         name:
           type: string
@@ -919,7 +967,9 @@ components:
           minimum: 1
         bodyMd:
           type: string
-          maxLength: 2097152
+          description: |
+            Markdown，UTF-8。服务端按 **字节** 限制 byte_length ≤ 2097152；
+            超限返回 413 PAYLOAD_TOO_LARGE（OpenAPI maxLength 不表示字节合同）。
 
     OverwriteContentRequest:
       type: object
@@ -931,7 +981,9 @@ components:
           description: 冲突时的 serverVersion
         bodyMd:
           type: string
-          maxLength: 2097152
+          description: |
+            Markdown，UTF-8。服务端按 **字节** 限制 byte_length ≤ 2097152；
+            超限返回 413 PAYLOAD_TOO_LARGE（OpenAPI maxLength 不表示字节合同）。
 
     SaveAsContentRequest:
       type: object
@@ -939,7 +991,9 @@ components:
       properties:
         bodyMd:
           type: string
-          maxLength: 2097152
+          description: |
+            Markdown，UTF-8。服务端按 **字节** 限制 byte_length ≤ 2097152；
+            超限返回 413 PAYLOAD_TOO_LARGE（OpenAPI maxLength 不表示字节合同）。
         title:
           type: string
           maxLength: 512
@@ -961,14 +1015,42 @@ components:
 
     VersionConflictDetails:
       type: object
+      required: [serverVersion]
       properties:
         serverVersion:
           type: integer
+          minimum: 1
         updatedAt:
           type: string
           format: date-time
         updatedBy:
-          $ref: '#/components/schemas/UserBrief'
+          allOf:
+            - $ref: '#/components/schemas/UserBrief'
+          nullable: true
+
+    ErrorEnvelopeVersionConflict:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        data:
+          nullable: true
+          description: 恒为 null
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              enum: [DOC_VERSION_CONFLICT]
+            message:
+              type: string
+            details:
+              $ref: '#/components/schemas/VersionConflictDetails'
+        requestId:
+          type: string
 
     # --- Envelopes ---
     SuccessEnvelopeEmpty:
@@ -1033,13 +1115,24 @@ components:
         success: { type: boolean, enum: [true] }
         data:
           type: object
-          required: [items]
+          required: [items, page, pageSize, total]
           properties:
             items:
               type: array
               items:
                 $ref: '#/components/schemas/KnowledgeBase'
-        error: { nullable: true }
+            page:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+            total:
+              type: integer
+              minimum: 0
+        error:
+          nullable: true
+          description: 成功时为 null
         requestId: { type: string }
 
     SuccessEnvelopeNode:
@@ -1075,13 +1168,13 @@ components:
         success: { type: boolean, enum: [true] }
         data:
           type: object
-          required: [nodes]
+          required: [items]
           properties:
-            nodes:
+            items:
               type: array
               items:
                 $ref: '#/components/schemas/TreeNode'
-              description: 扁平列表，含 parentId，客户端建树
+              description: 扁平列表，含 parentId，客户端建树（字段名统一 items）
         error: { nullable: true }
         requestId: { type: string }
 
@@ -1155,7 +1248,7 @@ components:
               code: VALIDATION_ERROR
               message: 请求参数不合法
               details: {}
-            requestId: '01HZY...'
+            requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     Unauthorized:
       description: 未登录
       content:
@@ -1168,7 +1261,7 @@ components:
             error:
               code: UNAUTHORIZED
               message: 未登录
-            requestId: '01HZY...'
+            requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     NotFound:
       description: 不存在或无权限（模糊 404）
       content:
@@ -1181,7 +1274,7 @@ components:
             error:
               code: NOT_FOUND
               message: 资源不存在
-            requestId: '01HZY...'
+            requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     Conflict:
       description: 业务冲突（如非空不可删、成环）
       content:
@@ -1196,7 +1289,7 @@ components:
                 error:
                   code: NODE_HAS_CHILDREN
                   message: 请先移出或删除子节点
-                requestId: '01HZY...'
+                requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
             cycle:
               value:
                 success: false
@@ -1204,14 +1297,13 @@ components:
                 error:
                   code: NODE_CYCLE_DETECTED
                   message: 不能移动到自己的子孙节点下
-                requestId: '01HZY...'
+                requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     VersionConflict:
-      description: 正文版本冲突
+      description: 正文版本冲突（error.details 见 VersionConflictDetails）
       content:
         application/json:
           schema:
-            allOf:
-              - $ref: '#/components/schemas/ErrorEnvelope'
+            $ref: '#/components/schemas/ErrorEnvelopeVersionConflict'
           example:
             success: false
             data: null
@@ -1222,9 +1314,9 @@ components:
                 serverVersion: 4
                 updatedAt: '2026-07-12T10:00:00.000Z'
                 updatedBy:
-                  id: '01HZYK3V8Q9EXAMPLE0000001'
+                  id: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
                   nickname: Alice
-            requestId: '01HZY...'
+            requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     PayloadTooLarge:
       description: 正文超过 2MB
       content:
@@ -1237,7 +1329,7 @@ components:
             error:
               code: PAYLOAD_TOO_LARGE
               message: 文档内容超过 2MB 限制
-            requestId: '01HZY...'
+            requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     RateLimited:
       description: 限流
       content:
@@ -1252,7 +1344,7 @@ components:
                 error:
                   code: SMS_RATE_LIMITED
                   message: 发送过于频繁
-                requestId: '01HZY...'
+                requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
             generic:
               value:
                 success: false
@@ -1260,7 +1352,7 @@ components:
                 error:
                   code: RATE_LIMITED
                   message: 请求过于频繁
-                requestId: '01HZY...'
+                requestId: '01ARZ3NDEKTSV4RRFFQ69G5FAV'
     ServiceUnavailable:
       description: 依赖不可用
       content:
