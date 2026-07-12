@@ -99,3 +99,25 @@ git push -u origin HEAD
 gh pr create --fill   # 或按模板填写
 gh pr merge --auto --squash
 ```
+
+## 6. 分支模型（v0.1.0 起）
+
+| 分支 | 用途 | 合并方式 |
+|------|------|----------|
+| `main` | **仅稳定发布**；打 Tag / Release | 仅接受来自 `dev` 的发布 PR |
+| `dev` | **日常集成** 长期分支 | 接受 `feature/*`、`fix/*` PR |
+| `feature/*` / `fix/*` | 功能与缺陷 | 从最新 `dev` 拉出，PR 回 `dev` |
+
+**禁止**：在 `main` / `dev` 上直接 push（已开保护）；禁止 force-push；禁止绕过 CI。
+
+```bash
+git checkout dev && git pull
+git checkout -b feature/your-topic
+# ... 开发 ...
+git push -u origin HEAD
+gh pr create --base dev
+# CI 通过后合并到 dev
+# 版本验收后：gh pr create --base main --head dev
+# main 合并后再 tag + release
+```
+
