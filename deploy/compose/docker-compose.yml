@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: yuque
-      POSTGRES_PASSWORD: yuque
+      POSTGRES_PASSWORD: localdevonly
       POSTGRES_DB: yuque1
     ports:
       - '5432:5432'
