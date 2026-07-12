@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   push:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -30,14 +30,26 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     env:
       DATABASE_URL: postgresql://yuque:localdevonly@localhost:5432/yuque1?schema=public
       REDIS_URL: redis://localhost:6379
+      SMS_PROVIDER: mock
+      SMS_MOCK_CODE: '123456'
       SESSION_SECRET: ci-session-secret-not-for-production-use
       CORS_ORIGIN: http://localhost:5173
       COOKIE_SECURE: 'false'
       API_PORT: '3000'
+      # unit tests use MemoryKv via explicit injection; runtime CI uses Redis service
 
     steps:
       - name: Checkout
