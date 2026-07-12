@@ -1,3 +1,7 @@
+# Usage (from monorepo root):
+#   pnpm compose:up
+#   pnpm db:migrate:docker   # when host cannot reach published 5432 (DinD / 嵌套网络)
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -30,6 +34,27 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # One-shot migrate on the compose network (hostname: postgres)
+  migrate:
+    image: node:22-bookworm
+    profiles: ['tools']
+    working_dir: /app
+    volumes:
+      - ../../apps/api:/app
+      - ../../node_modules:/repo_node_modules:ro
+    environment:
+      DATABASE_URL: postgresql://yuque:localdevonly@postgres:5432/yuque1?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        npm install -g prisma@6.19.3 >/dev/null
+        prisma migrate deploy --schema=prisma/schema.prisma
 
 volumes:
   yuque1_pg_data:

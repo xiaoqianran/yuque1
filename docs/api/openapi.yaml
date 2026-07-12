@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.1
+  version: 0.1.2
   contact:
     name: yuque1
 
@@ -686,6 +686,7 @@ components:
         - NODE_CYCLE_DETECTED
         - PAYLOAD_TOO_LARGE
         - SHARE_INVALID
+        - SERVICE_UNAVAILABLE
 
     ErrorBody:
       type: object
@@ -1081,10 +1082,16 @@ components:
         success: { type: boolean, enum: [true] }
         data:
           type: object
+          required: [status, postgres, redis]
           properties:
             status: { type: string, example: ready }
             postgres: { type: boolean }
-            redis: { type: boolean }
+            redis:
+              type: boolean
+              description: REDIS_URL 可达性；未配置时为 false
+            redisConfigured:
+              type: boolean
+              description: 是否配置了 REDIS_URL
         error: { nullable: true }
         requestId: { type: string }
 

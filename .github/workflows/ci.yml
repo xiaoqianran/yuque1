@@ -14,7 +14,31 @@ jobs:
   check:
     name: Lint & Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: yuque
+          POSTGRES_PASSWORD: localdevonly
+          POSTGRES_DB: yuque1
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yuque -d yuque1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://yuque:localdevonly@localhost:5432/yuque1?schema=public
+      REDIS_URL: redis://localhost:6379
+      SESSION_SECRET: ci-session-secret-not-for-production-use
+      CORS_ORIGIN: http://localhost:5173
+      COOKIE_SECURE: 'false'
+      API_PORT: '3000'
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,10 +54,12 @@ jobs:
           corepack prepare pnpm@9.15.0 --activate
 
       - name: Install
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
-      - name: CI
-        run: pnpm run ci
-        env:
-          # Prisma generate does not need a live DB
-          DATABASE_URL: postgresql://USER:PASSWORD@localhost:5432/yuque1?schema=public
+      - name: Prisma generate + migrate
+        run: |
+          pnpm db:generate
+          pnpm db:migrate
+
+      - name: CI (typecheck, test, build)
+        run: pnpm run check:node && pnpm run check:docs && pnpm run typecheck && pnpm run test && pnpm run build

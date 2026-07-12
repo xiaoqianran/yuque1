@@ -1,5 +1,9 @@
 import { NestFactory } from '@nestjs/core';
+import { loadMonorepoEnv } from './load-env';
 import { AppModule } from './app.module';
+
+// Must run before AppModule / PrismaService read process.env
+loadMonorepoEnv();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
