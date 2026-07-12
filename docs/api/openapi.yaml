@@ -1,0 +1,1272 @@
+openapi: 3.0.3
+info:
+  title: Yuque1 API
+  description: |
+    复刻语雀核心子集 HTTP API 契约（SSOT）。
+
+    **对齐文档**
+    - Design-00 v1.2 总体技术方案
+    - Design-01 v1.1 领域模型与数据库
+
+    **约定**
+    - 前缀：`/api/v1`
+    - 鉴权：HttpOnly Cookie `sid`（同站）；分享读接口除外
+    - 统一响应包络：`success` / `data` / `error` / `requestId`
+    - 业务错误使用语义化 HTTP 状态码（禁止一律 200）
+    - 资源 ID：ULID 字符串（26 字符）
+    - 正文：`nodeId`；overwrite 必须带 `baseVersion`
+  version: 0.1.0
+  contact:
+    name: yuque1
+
+servers:
+  - url: /api/v1
+    description: 相对当前站点（Nginx 同站反代）
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: KnowledgeBases
+  - name: Tree
+  - name: Content
+  - name: Share
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: 存活探测
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: 进程存活
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeHealth'
+
+  /ready:
+    get:
+      tags: [Health]
+      summary: 就绪探测（DB + Redis）
+      operationId: getReady
+      security: []
+      responses:
+        '200':
+          description: 依赖可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeReady'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /auth/sms/send:
+    post:
+      tags: [Auth]
+      summary: 发送短信验证码
+      operationId: sendSmsCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendSmsRequest'
+      responses:
+        '200':
+          description: 已接受发送（不泄露用户是否已注册的细节策略由实现决定，默认统一成功文案）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/sms/login:
+    post:
+      tags: [Auth]
+      summary: 手机号验证码登录/注册
+      description: |
+        验证成功后创建 Session，并通过 `Set-Cookie: sid=...; HttpOnly; Path=/; SameSite=Lax; Secure(prod)` 下发。
+        新用户同事务创建 User + Workspace。
+      operationId: smsLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmsLoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          headers:
+            Set-Cookie:
+              description: 会话 Cookie `sid`
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出登录
+      operationId: logout
+      responses:
+        '200':
+          description: 已清除服务端 Session 与 Cookie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: 当前用户
+      operationId: getMe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /kbs:
+    get:
+      tags: [KnowledgeBases]
+      summary: 我的知识库列表
+      description: 基于 `kb_members` 关联且库未软删。
+      operationId: listKnowledgeBases
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeKbList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [KnowledgeBases]
+      summary: 创建知识库
+      description: 同事务写入 `knowledge_bases` + `kb_members(role=owner)`。
+      operationId: createKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKbRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeKb'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /kbs/{kbId}:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [KnowledgeBases]
+      summary: 知识库详情
+      operationId: getKnowledgeBase
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeKb'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [KnowledgeBases]
+      summary: 更新知识库（名称/简介）
+      operationId: updateKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateKbRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeKb'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [KnowledgeBases]
+      summary: 软删知识库
+      description: |
+        单事务：软删库 → 级联软删全部 active 节点 → 禁用相关分享 → 审计。
+        需要 owner。
+      operationId: deleteKnowledgeBase
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /kbs/{kbId}/tree:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [Tree]
+      summary: 获取知识库文档树（未删除节点）
+      operationId: getKbTree
+      responses:
+        '200':
+          description: 扁平节点列表（客户端建树）或已建树结构，MVP 返回扁平+parentId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeTree'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /kbs/{kbId}/nodes:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [Tree]
+      summary: 标题搜索节点
+      operationId: searchKbNodes
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNodeList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Tree]
+      summary: 创建节点（folder 或 doc）
+      description: |
+        - `parentId` 可空（库根）；可为 folder 或 **doc**（doc 下挂子节点）
+        - type=doc 时同事务创建空正文 content_version=1
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodeRequest'
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{nodeId}:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    get:
+      tags: [Tree]
+      summary: 节点元信息
+      operationId: getNode
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Tree]
+      summary: 更新节点（重命名）
+      description: 不可修改 type / knowledgeBaseId。
+      operationId: updateNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Tree]
+      summary: 软删节点
+      description: 存在未删除子节点时 409 NODE_HAS_CHILDREN。
+      operationId: deleteNode
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /nodes/{nodeId}/move:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    post:
+      tags: [Tree]
+      summary: 移动节点
+      description: 仅改 parentId/sortOrder；防环；禁止跨库。
+      operationId: moveNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveNodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{nodeId}/content:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    get:
+      tags: [Content]
+      summary: 获取文档正文
+      operationId: getNodeContent
+      responses:
+        '200':
+          description: OK（仅 type=doc）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Content]
+      summary: 保存正文（乐观锁）
+      description: |
+        必须携带 `expectedVersion`；不匹配返回 409 DOC_VERSION_CONFLICT。
+        正文 UTF-8 超过 2MB → 413。
+      operationId: putNodeContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PutContentRequest'
+      responses:
+        '200':
+          description: 保存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeContentMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+
+  /nodes/{nodeId}/content/overwrite:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    post:
+      tags: [Content]
+      summary: 冲突后强制覆盖
+      description: |
+        必须携带 `baseVersion`（冲突面板中的 serverVersion）。
+        成功：写入 content_revisions + 条件更新 + 审计。
+        baseVersion 已过期 → 409。
+      operationId: overwriteNodeContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverwriteContentRequest'
+      responses:
+        '200':
+          description: 覆盖成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeContentMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/VersionConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+
+  /nodes/{nodeId}/content/save-as:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    post:
+      tags: [Content]
+      summary: 冲突后另存为新文档
+      description: 不修改源文档；新建 doc 节点 + 正文 version=1。
+      operationId: saveAsNodeContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveAsContentRequest'
+      responses:
+        '201':
+          description: 已创建副本
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNodeWithContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+
+  /nodes/{nodeId}/share:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    get:
+      tags: [Share]
+      summary: 获取当前文档分享状态
+      operationId: getNodeShare
+      responses:
+        '200':
+          description: OK（无分享时 data.enabled=false 且 token 为空）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeShare'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Share]
+      summary: 开启或更新分享（启用）
+      description: 同一 node 仅一条 enabled=true；返回 token（仅此时完整可见）。
+      operationId: enableNodeShare
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableShareRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeShare'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Share]
+      summary: 关闭分享
+      operationId: disableNodeShare
+      responses:
+        '200':
+          description: 已关闭
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /share/{token}:
+    get:
+      tags: [Share]
+      summary: 通过分享 token 只读访问
+      description: |
+        无需登录。校验 enabled、未过期(P1)、node/kb 未软删、type=doc。
+        返回 Markdown 正文，不返回 HTML。
+      operationId: getSharedDocument
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 64
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeSharedDoc'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sid
+      description: Redis Session ID
+
+  parameters:
+    KbId:
+      name: kbId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+    NodeId:
+      name: nodeId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Ulid'
+
+  schemas:
+    Ulid:
+      type: string
+      minLength: 26
+      maxLength: 26
+      pattern: '^[0-9A-HJKMNP-TV-Z]{26}$'
+      description: ULID（Crockford Base32）
+      example: '01HZYK3V8Q9EXAMPLE0000000'
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: DOC_VERSION_CONFLICT
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        data:
+          nullable: true
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+        requestId:
+          type: string
+
+    User:
+      type: object
+      required: [id, mobileE164, nickname, mobileVerified]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        mobileE164:
+          type: string
+          example: '+8613800138000'
+        nickname:
+          type: string
+        mobileVerified:
+          type: boolean
+        email:
+          type: string
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+
+    KnowledgeBase:
+      type: object
+      required: [id, name, visibility, role, createdAt, updatedAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        visibility:
+          type: string
+          enum: [private]
+        role:
+          type: string
+          enum: [owner, editor, reader]
+          description: 当前用户在该库的角色（来自 kb_members）
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NodeType:
+      type: string
+      enum: [folder, doc]
+
+    TreeNode:
+      type: object
+      required: [id, knowledgeBaseId, type, title, sortOrder, parentId, createdAt, updatedAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        knowledgeBaseId:
+          $ref: '#/components/schemas/Ulid'
+        parentId:
+          allOf:
+            - $ref: '#/components/schemas/Ulid'
+          nullable: true
+        type:
+          $ref: '#/components/schemas/NodeType'
+        title:
+          type: string
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserBrief:
+      type: object
+      required: [id, nickname]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        nickname:
+          type: string
+
+    DocumentContent:
+      type: object
+      required: [nodeId, bodyMd, version, updatedAt]
+      properties:
+        nodeId:
+          $ref: '#/components/schemas/Ulid'
+        bodyMd:
+          type: string
+          description: Markdown 原文
+        version:
+          type: integer
+          minimum: 1
+          description: content_version
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          allOf:
+            - $ref: '#/components/schemas/UserBrief'
+          nullable: true
+
+    ContentMeta:
+      type: object
+      required: [nodeId, version, updatedAt]
+      properties:
+        nodeId:
+          $ref: '#/components/schemas/Ulid'
+        version:
+          type: integer
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+
+    ShareInfo:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        token:
+          type: string
+          nullable: true
+          description: 启用时返回；关闭后不再返回有效 token
+        urlPath:
+          type: string
+          nullable: true
+          description: 前端路径如 /s/{token}
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SharedDocument:
+      type: object
+      required: [title, bodyMd]
+      properties:
+        title:
+          type: string
+        bodyMd:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SendSmsRequest:
+      type: object
+      required: [mobileE164]
+      properties:
+        mobileE164:
+          type: string
+          description: E.164
+          example: '+8613800138000'
+
+    SmsLoginRequest:
+      type: object
+      required: [mobileE164, code]
+      properties:
+        mobileE164:
+          type: string
+        code:
+          type: string
+          minLength: 4
+          maxLength: 8
+        nickname:
+          type: string
+          maxLength: 64
+          description: 仅新用户注册时可选
+
+    CreateKbRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 2000
+
+    UpdateKbRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+      additionalProperties: false
+
+    CreateNodeRequest:
+      type: object
+      required: [type, title]
+      properties:
+        type:
+          $ref: '#/components/schemas/NodeType'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 512
+        parentId:
+          allOf:
+            - $ref: '#/components/schemas/Ulid'
+          nullable: true
+
+    UpdateNodeRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 512
+      additionalProperties: false
+
+    MoveNodeRequest:
+      type: object
+      required: [parentId]
+      properties:
+        parentId:
+          allOf:
+            - $ref: '#/components/schemas/Ulid'
+          nullable: true
+          description: null 表示移到库根
+        sortOrder:
+          type: integer
+          description: 可选；省略则服务端按间隔规则分配
+
+    PutContentRequest:
+      type: object
+      required: [expectedVersion, bodyMd]
+      properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
+        bodyMd:
+          type: string
+          maxLength: 2097152
+
+    OverwriteContentRequest:
+      type: object
+      required: [baseVersion, bodyMd]
+      properties:
+        baseVersion:
+          type: integer
+          minimum: 1
+          description: 冲突时的 serverVersion
+        bodyMd:
+          type: string
+          maxLength: 2097152
+
+    SaveAsContentRequest:
+      type: object
+      required: [bodyMd]
+      properties:
+        bodyMd:
+          type: string
+          maxLength: 2097152
+        title:
+          type: string
+          maxLength: 512
+          description: 默认「{原标题} (冲突副本)」
+        parentId:
+          allOf:
+            - $ref: '#/components/schemas/Ulid'
+          nullable: true
+          description: 默认与源节点同父
+
+    EnableShareRequest:
+      type: object
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: P1；MVP 可忽略
+
+    VersionConflictDetails:
+      type: object
+      properties:
+        serverVersion:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          $ref: '#/components/schemas/UserBrief'
+
+    # --- Envelopes ---
+    SuccessEnvelopeEmpty:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data: { nullable: true }
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeHealth:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          properties:
+            status: { type: string, example: ok }
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeReady:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          properties:
+            status: { type: string, example: ready }
+            postgres: { type: boolean }
+            redis: { type: boolean }
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeUser:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/User'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeKb:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/KnowledgeBase'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeKbList:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/KnowledgeBase'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeNode:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/TreeNode'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeNodeList:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/TreeNode'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeTree:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [nodes]
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/TreeNode'
+              description: 扁平列表，含 parentId，客户端建树
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeContent:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/DocumentContent'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeContentMeta:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/ContentMeta'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeNodeWithContent:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [node, content]
+          properties:
+            node:
+              $ref: '#/components/schemas/TreeNode'
+            content:
+              $ref: '#/components/schemas/DocumentContent'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeShare:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/ShareInfo'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeSharedDoc:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/SharedDocument'
+        error: { nullable: true }
+        requestId: { type: string }
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error:
+              code: VALIDATION_ERROR
+              message: 请求参数不合法
+              details: {}
+            requestId: '01HZY...'
+    Unauthorized:
+      description: 未登录
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error:
+              code: UNAUTHORIZED
+              message: 未登录
+            requestId: '01HZY...'
+    NotFound:
+      description: 不存在或无权限（模糊 404）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error:
+              code: NOT_FOUND
+              message: 资源不存在
+            requestId: '01HZY...'
+    Conflict:
+      description: 业务冲突（如非空不可删、成环）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            hasChildren:
+              value:
+                success: false
+                data: null
+                error:
+                  code: NODE_HAS_CHILDREN
+                  message: 请先移出或删除子节点
+                requestId: '01HZY...'
+            cycle:
+              value:
+                success: false
+                data: null
+                error:
+                  code: NODE_CYCLE_DETECTED
+                  message: 不能移动到自己的子孙节点下
+                requestId: '01HZY...'
+    VersionConflict:
+      description: 正文版本冲突
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error:
+              code: DOC_VERSION_CONFLICT
+              message: 文档已被他人更新
+              details:
+                serverVersion: 4
+                updatedAt: '2026-07-12T10:00:00.000Z'
+                updatedBy:
+                  id: '01HZYK3V8Q9EXAMPLE0000001'
+                  nickname: Alice
+            requestId: '01HZY...'
+    PayloadTooLarge:
+      description: 正文超过 2MB
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            data: null
+            error:
+              code: PAYLOAD_TOO_LARGE
+              message: 文档内容超过 2MB 限制
+            requestId: '01HZY...'
+    RateLimited:
+      description: 限流
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            sms:
+              value:
+                success: false
+                data: null
+                error:
+                  code: SMS_RATE_LIMITED
+                  message: 发送过于频繁
+                requestId: '01HZY...'
+            generic:
+              value:
+                success: false
+                data: null
+                error:
+                  code: RATE_LIMITED
+                  message: 请求过于频繁
+                requestId: '01HZY...'
+    ServiceUnavailable:
+      description: 依赖不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+security:
+  - cookieAuth: []
