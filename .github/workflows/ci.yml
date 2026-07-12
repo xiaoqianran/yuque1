@@ -36,4 +36,4 @@ jobs:
         run: pnpm run ci
         env:
           # Prisma generate does not need a live DB
-          DATABASE_URL: postgresql://yuque:yuque@localhost:5432/yuque1?schema=public
+          DATABASE_URL: postgresql://USER:PASSWORD@localhost:5432/yuque1?schema=public
