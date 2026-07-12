@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint & Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Verify Node 22
+        run: |
+          node -v
+          major=$(node -p "process.versions.node.split('.')[0]")
+          test "$major" = "22"
+
+      - name: Enable corepack / pnpm
+        run: corepack enable
+
+      - name: Install (no deps yet, validate package.json)
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+          node scripts/check-docs.mjs
+
+      - name: CI script
+        run: |
+          corepack prepare pnpm@9.15.0 --activate
+          pnpm run ci
