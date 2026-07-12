@@ -4,6 +4,7 @@ import { HealthModule } from './modules/health/health.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/kb.module';
 import { KvModule } from './modules/kv/kv.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { TreeModule } from './modules/tree/tree.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
     HealthModule,
     AuthModule,
     KnowledgeBaseModule,
+    TreeModule,
   ],
 })
 export class AppModule {}
