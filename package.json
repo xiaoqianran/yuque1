@@ -21,6 +21,7 @@
     "compose:down": "docker compose -f deploy/compose/docker-compose.yml down",
     "ci": "pnpm run check:node && pnpm run check:docs && pnpm run prisma:generate && pnpm run typecheck && pnpm run test && pnpm run build",
     "db:migrate": "pnpm --filter @yuque1/api prisma:deploy",
+    "db:migrate:docker": "docker compose -f deploy/compose/docker-compose.yml --profile tools run --rm migrate",
     "db:generate": "pnpm --filter @yuque1/api prisma:generate"
   },
   "license": "UNLICENSED"

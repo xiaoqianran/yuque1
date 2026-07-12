@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit --pretty false",
     "lint": "tsc --noEmit --pretty false",
-    "test": "node --import tsx --test src/lib/format.spec.ts"
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "react": "^19.0.0",
