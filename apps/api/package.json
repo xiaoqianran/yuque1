@@ -10,9 +10,10 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test src/common/ulid.spec.ts src/modules/health/health.controller.spec.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy"
+    "prisma:generate": "node scripts/run-prisma.cjs generate",
+    "prisma:migrate": "node scripts/run-prisma.cjs migrate dev",
+    "prisma:deploy": "node scripts/run-prisma.cjs migrate deploy",
+    "prisma": "node scripts/run-prisma.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.12",
