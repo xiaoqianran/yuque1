@@ -1,0 +1,17 @@
+{
+  "name": "yuque1",
+  "version": "0.0.1",
+  "private": true,
+  "description": "复刻语雀：可自托管知识库（企业级前后端）",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "check:node": "node -e \"const m=+process.versions.node.split('.')[0]; if(m!==22){console.error('Require Node.js 22, got',process.version); process.exit(1)}; console.log('Node',process.version)\"",
+    "check:docs": "node scripts/check-docs.mjs",
+    "ci": "pnpm run check:node && pnpm run check:docs"
+  },
+  "license": "UNLICENSED"
+}
