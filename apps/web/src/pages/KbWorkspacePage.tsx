@@ -1,0 +1,298 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
+import { ApiError } from '../api/types';
+import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
+
+function buildChildrenMap(nodes: PublicNode[]): Map<string | null, PublicNode[]> {
+  const map = new Map<string | null, PublicNode[]>();
+  for (const n of nodes) {
+    const key = n.parentId;
+    const list = map.get(key) ?? [];
+    list.push(n);
+    map.set(key, list);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
+  }
+  return map;
+}
+
+function TreeNodes({
+  parentId,
+  map,
+  depth,
+  selectedId,
+  onSelect,
+}: {
+  parentId: string | null;
+  map: Map<string | null, PublicNode[]>;
+  depth: number;
+  selectedId: string | null;
+  onSelect: (n: PublicNode) => void;
+}) {
+  const children = map.get(parentId) ?? [];
+  return (
+    <ul className="tree" style={{ paddingLeft: depth === 0 ? 0 : 12 }}>
+      {children.map((n) => (
+        <li key={n.id}>
+          <button
+            type="button"
+            className={`tree-item ${selectedId === n.id ? 'active' : ''}`}
+            onClick={() => onSelect(n)}
+          >
+            <span className="tree-type">{n.type === 'folder' ? '📁' : '📄'}</span>
+            {n.title}
+          </button>
+          <TreeNodes
+            parentId={n.id}
+            map={map}
+            depth={depth + 1}
+            selectedId={selectedId}
+            onSelect={onSelect}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function KbWorkspacePage() {
+  const { kbId = '' } = useParams();
+  const [kb, setKb] = useState<PublicKb | null>(null);
+  const [nodes, setNodes] = useState<PublicNode[]>([]);
+  const [selected, setSelected] = useState<PublicNode | null>(null);
+  const [body, setBody] = useState('');
+  const [version, setVersion] = useState<number | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ serverVersion: number } | null>(null);
+  const [share, setShare] = useState<ShareInfo | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
+
+  const refreshTree = useCallback(async () => {
+    const data = await treeApi.list(kbId);
+    setNodes(data.items);
+  }, [kbId]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setError(null);
+        const [k, t] = await Promise.all([kbApi.get(kbId), treeApi.list(kbId)]);
+        setKb(k);
+        setNodes(t.items);
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : '加载知识库失败');
+      }
+    })();
+  }, [kbId]);
+
+  async function openNode(n: PublicNode) {
+    setSelected(n);
+    setConflict(null);
+    setShare(null);
+    setStatus(null);
+    if (n.type !== 'doc') {
+      setBody('');
+      setVersion(null);
+      return;
+    }
+    try {
+      const c = await contentApi.get(n.id);
+      setBody(c.bodyMd);
+      setVersion(c.version);
+      const s = await shareApi.get(n.id);
+      setShare(s);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '打开文档失败');
+    }
+  }
+
+  async function createNode(type: 'folder' | 'doc') {
+    const title = newTitle.trim() || (type === 'folder' ? '新建文件夹' : '无标题文档');
+    try {
+      const parentId =
+        selected && (selected.type === 'folder' || selected.type === 'doc')
+          ? selected.id
+          : null;
+      // 若当前选中 doc 且建 folder，仍允许挂在 doc 下（产品允许 doc 子树）
+      const node = await treeApi.create(kbId, {
+        type,
+        title,
+        parentId: selected ? selected.id : parentId,
+      });
+      setNewTitle('');
+      await refreshTree();
+      if (type === 'doc') await openNode(node);
+      else setSelected(node);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '创建失败');
+    }
+  }
+
+  async function save() {
+    if (!selected || selected.type !== 'doc' || version == null) return;
+    setStatus('保存中…');
+    setConflict(null);
+    try {
+      const meta = await contentApi.put(selected.id, version, body);
+      setVersion(meta.version);
+      setStatus(`已保存 v${meta.version}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'DOC_VERSION_CONFLICT') {
+        const serverVersion = Number(
+          (e.details as { serverVersion?: number } | null)?.serverVersion ?? 0,
+        );
+        setConflict({ serverVersion });
+        setStatus('版本冲突');
+      } else {
+        setStatus(e instanceof ApiError ? e.message : '保存失败');
+      }
+    }
+  }
+
+  async function reloadServer() {
+    if (!selected || selected.type !== 'doc') return;
+    const c = await contentApi.get(selected.id);
+    setBody(c.bodyMd);
+    setVersion(c.version);
+    setConflict(null);
+    setStatus(`已加载服务器 v${c.version}`);
+  }
+
+  async function overwrite() {
+    if (!selected || !conflict) return;
+    const meta = await contentApi.overwrite(selected.id, conflict.serverVersion, body);
+    setVersion(meta.version);
+    setConflict(null);
+    setStatus(`已覆盖保存 v${meta.version}`);
+  }
+
+  async function saveAsCopy() {
+    if (!selected) return;
+    const r = await contentApi.saveAs(selected.id, body);
+    setConflict(null);
+    await refreshTree();
+    await openNode(r.node);
+    setStatus('已另存为新文档');
+  }
+
+  async function toggleShare() {
+    if (!selected || selected.type !== 'doc') return;
+    try {
+      if (share?.enabled) {
+        await shareApi.disable(selected.id);
+        setShare({ enabled: false, token: null, urlPath: null, expiresAt: null });
+        setStatus('已关闭分享');
+      } else {
+        const s = await shareApi.enable(selected.id);
+        setShare(s);
+        setStatus('已开启分享');
+      }
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '分享操作失败');
+    }
+  }
+
+  const publicSharePath =
+    share?.enabled && share.token
+      ? `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}s/${share.token}`
+      : null;
+
+  return (
+    <div className="workspace">
+      <aside className="sidebar">
+        <div className="sidebar-head">
+          <Link to="/" className="back">
+            ← 知识库
+          </Link>
+          <h2>{kb?.name ?? '…'}</h2>
+        </div>
+        <div className="tree-actions">
+          <input
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="标题"
+          />
+          <div className="row">
+            <button type="button" className="btn secondary small" onClick={() => void createNode('folder')}>
+              + 文件夹
+            </button>
+            <button type="button" className="btn secondary small" onClick={() => void createNode('doc')}>
+              + 文档
+            </button>
+          </div>
+          <p className="hint muted">新建会挂在当前选中节点下（可挂 doc 子节点）</p>
+        </div>
+        <TreeNodes
+          parentId={null}
+          map={childMap}
+          depth={0}
+          selectedId={selected?.id ?? null}
+          onSelect={(n) => void openNode(n)}
+        />
+      </aside>
+
+      <section className="editor-pane">
+        {error && <p className="form-msg">{error}</p>}
+        {!selected && <p className="muted center">选择或创建文档开始编辑</p>}
+        {selected?.type === 'folder' && (
+          <div className="card">
+            <h2>📁 {selected.title}</h2>
+            <p className="muted">文件夹无正文。可在其下创建子节点。</p>
+          </div>
+        )}
+        {selected?.type === 'doc' && (
+          <>
+            <div className="editor-toolbar">
+              <h2>📄 {selected.title}</h2>
+              <div className="row">
+                <span className="badge">v{version ?? '?'}</span>
+                <button type="button" className="btn primary small" onClick={() => void save()}>
+                  保存
+                </button>
+                <button type="button" className="btn secondary small" onClick={() => void toggleShare()}>
+                  {share?.enabled ? '关闭分享' : '开启分享'}
+                </button>
+              </div>
+            </div>
+            {status && <p className="status-line">{status}</p>}
+            {conflict && (
+              <div className="conflict-banner">
+                <strong>版本冲突</strong>
+                <span className="muted">服务器版本 v{conflict.serverVersion}</span>
+                <div className="row">
+                  <button type="button" className="btn secondary small" onClick={() => void reloadServer()}>
+                    加载最新
+                  </button>
+                  <button type="button" className="btn primary small" onClick={() => void overwrite()}>
+                    强制覆盖
+                  </button>
+                  <button type="button" className="btn secondary small" onClick={() => void saveAsCopy()}>
+                    另存副本
+                  </button>
+                </div>
+              </div>
+            )}
+            {publicSharePath && share?.token && (
+              <p className="share-link">
+                公开链接： <Link to={`/s/${share.token}`}>{publicSharePath}</Link>
+                <span className="muted"> （相对本站路径）</span>
+              </p>
+            )}
+            <textarea
+              className="editor"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Markdown 正文…"
+              spellCheck={false}
+            />
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
