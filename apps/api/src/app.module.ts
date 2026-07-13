@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from './modules/auth/auth.module';
+import { ContentModule } from './modules/content/content.module';
 import { HealthModule } from './modules/health/health.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/kb.module';
 import { KvModule } from './modules/kv/kv.module';
@@ -14,6 +15,7 @@ import { TreeModule } from './modules/tree/tree.module';
     AuthModule,
     KnowledgeBaseModule,
     TreeModule,
+    ContentModule,
   ],
 })
 export class AppModule {}
