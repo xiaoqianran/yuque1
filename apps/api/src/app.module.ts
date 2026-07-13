@@ -5,6 +5,7 @@ import { HealthModule } from './modules/health/health.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/kb.module';
 import { KvModule } from './modules/kv/kv.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { ShareModule } from './modules/share/share.module';
 import { TreeModule } from './modules/tree/tree.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { TreeModule } from './modules/tree/tree.module';
     KnowledgeBaseModule,
     TreeModule,
     ContentModule,
+    ShareModule,
   ],
 })
 export class AppModule {}
