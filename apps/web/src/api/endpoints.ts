@@ -35,6 +35,14 @@ export const kbApi = {
       body: JSON.stringify({ name, description }),
     }),
   get: (kbId: string) => apiRequest<PublicKb>(`/kbs/${kbId}`),
+  update: (
+    kbId: string,
+    patch: { name?: string; description?: string | null },
+  ) =>
+    apiRequest<PublicKb>(`/kbs/${kbId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
   remove: (kbId: string) => apiRequest<null>(`/kbs/${kbId}`, { method: 'DELETE' }),
 };
 

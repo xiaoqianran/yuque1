@@ -37,3 +37,27 @@ export function normalizeRenameTitle(raw: string):
   if (title.length > 512) return { ok: false, message: '标题不超过 512 字' };
   return { ok: true, title };
 }
+
+/** Knowledge base name: non-empty, max 128 (OpenAPI / Design-01). */
+export function normalizeKbName(raw: string):
+  | { ok: true; name: string }
+  | { ok: false; message: string } {
+  const name = raw.trim();
+  if (!name) return { ok: false, message: '知识库名称不能为空' };
+  if (name.length > 128) return { ok: false, message: '知识库名称不超过 128 字' };
+  return { ok: true, name };
+}
+
+/** KB description optional; max 2000. */
+export function normalizeKbDescription(
+  raw: string | null | undefined,
+):
+  | { ok: true; description: string | null }
+  | { ok: false; message: string } {
+  if (raw == null) return { ok: true, description: null };
+  if (raw.length > 2000) {
+    return { ok: false, message: '简介不超过 2000 字' };
+  }
+  const t = raw.trim();
+  return { ok: true, description: t || null };
+}
