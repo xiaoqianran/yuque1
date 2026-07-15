@@ -145,6 +145,24 @@ async function main() {
   let r = await a.req('GET', '/auth/me');
   assertOk('A auth/me', r);
 
+  // 1b) Update nickname
+  const newNick = `e2e-nick-${Date.now().toString(36).slice(-6)}`;
+  r = await a.req('PATCH', '/auth/me', { nickname: newNick });
+  assertOk('A update nickname', r);
+  if (r.json.data?.nickname !== newNick) {
+    throw new Error(`nickname patch mismatch: ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('GET', '/auth/me');
+  assertOk('A auth/me after nick', r);
+  if (r.json.data?.nickname !== newNick) {
+    throw new Error(`nickname not persisted: ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('PATCH', '/auth/me', { nickname: '   ' });
+  if (r.status !== 400 || r.json.success) {
+    throw new Error(`empty nickname should 400: ${r.status} ${JSON.stringify(r.json)}`);
+  }
+  console.log('    profile nickname update ok');
+
   // 2) Create KB
   r = await a.req('POST', '/kbs', { name: kbName, description: 'e2e' });
   if (r.status !== 200 && r.status !== 201) {

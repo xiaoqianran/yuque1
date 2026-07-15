@@ -25,6 +25,11 @@ export const authApi = {
     }),
   logout: () => apiRequest<null>('/auth/logout', { method: 'POST' }),
   me: () => apiRequest<PublicUser>('/auth/me'),
+  updateMe: (patch: { nickname: string }) =>
+    apiRequest<PublicUser>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
 };
 
 export const kbApi = {
