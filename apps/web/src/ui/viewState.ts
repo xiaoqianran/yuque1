@@ -42,3 +42,39 @@ export function formatUpdatedAt(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleString();
 }
+
+/** KB list page: list load errors drive phase; action (create) errors stay inline. */
+export type KbListPresentationInput = {
+  loading: boolean;
+  listLoadError: string | null | undefined;
+  actionError: string | null | undefined;
+  itemCount: number;
+};
+
+export type KbListPresentation = {
+  /** Phase for list body StatePanel only (ignores actionError). */
+  phase: ViewPhase;
+  /** Inline form message under create bar; null when none. */
+  inlineActionError: string | null;
+  /** Full-panel load error copy when phase === 'error'. */
+  loadErrorMessage: string | null;
+};
+
+/**
+ * Compose list UI presentation so create failures never hide an already-loaded list.
+ */
+export function resolveKbListPresentation(
+  input: KbListPresentationInput,
+): KbListPresentation {
+  const phase = resolveViewPhase({
+    loading: input.loading,
+    error: input.listLoadError,
+    isEmpty: input.itemCount === 0,
+  });
+  return {
+    phase,
+    inlineActionError: input.actionError?.trim() ? input.actionError : null,
+    loadErrorMessage:
+      phase === 'error' ? (input.listLoadError ?? '未知错误') : null,
+  };
+}

@@ -5,24 +5,25 @@ import { ApiError } from '../api/types';
 import type { PublicKb } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatePanel } from '../components/StatePanel';
-import { resolveViewPhase, roleLabel } from '../ui/viewState';
+import { resolveKbListPresentation, roleLabel } from '../ui/viewState';
 
 export function KbListPage() {
   const { user, logout } = useAuth();
   const [items, setItems] = useState<PublicKb[]>([]);
   const [name, setName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [listLoadError, setListLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
   async function load() {
     setLoading(true);
-    setError(null);
+    setListLoadError(null);
     try {
       const data = await kbApi.list();
       setItems(data.items);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '加载失败');
+      setListLoadError(e instanceof ApiError ? e.message : '加载失败');
     } finally {
       setLoading(false);
     }
@@ -36,22 +37,23 @@ export function KbListPage() {
     e.preventDefault();
     if (!name.trim() || creating) return;
     setCreating(true);
-    setError(null);
+    setActionError(null);
     try {
       await kbApi.create(name.trim());
       setName('');
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '创建失败');
+      setActionError(err instanceof ApiError ? err.message : '创建失败');
     } finally {
       setCreating(false);
     }
   }
 
-  const phase = resolveViewPhase({
+  const { phase, inlineActionError, loadErrorMessage } = resolveKbListPresentation({
     loading,
-    error,
-    isEmpty: items.length === 0,
+    listLoadError,
+    actionError,
+    itemCount: items.length,
   });
 
   return (
@@ -82,6 +84,11 @@ export function KbListPage() {
             {creating ? '创建中…' : '创建'}
           </button>
         </form>
+        {inlineActionError && (
+          <p className="form-msg form-msg--error" role="alert">
+            {inlineActionError}
+          </p>
+        )}
       </div>
 
       {phase === 'loading' && (
@@ -92,7 +99,7 @@ export function KbListPage() {
         <StatePanel
           phase="error"
           title="无法加载知识库"
-          description={error ?? '未知错误'}
+          description={loadErrorMessage ?? '未知错误'}
           action={
             <button type="button" className="btn secondary small" onClick={() => void load()}>
               重试
