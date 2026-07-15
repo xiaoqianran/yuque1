@@ -188,6 +188,10 @@ export function KbWorkspacePage() {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [focusMode, setFocusMode] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashItems, setTrashItems] = useState<PublicNode[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -228,6 +232,18 @@ export function KbWorkspacePage() {
     setNodes(data.items);
   }, [kbId]);
 
+  const loadTrash = useCallback(async () => {
+    setTrashLoading(true);
+    try {
+      const data = await treeApi.trash(kbId);
+      setTrashItems(data.items);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '加载回收站失败');
+    } finally {
+      setTrashLoading(false);
+    }
+  }, [kbId]);
+
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -247,6 +263,10 @@ export function KbWorkspacePage() {
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (trashOpen) void loadTrash();
+  }, [trashOpen, loadTrash]);
 
   // Load recent docs when kb changes
   useEffect(() => {
@@ -595,10 +615,36 @@ export function KbWorkspacePage() {
       setVersion(null);
       setShare(null);
       setRenameTitle('');
-      setStatus(`已删除「${selected.title}」`);
+      setStatus(`已移入回收站「${selected.title}」`);
       await refreshTree();
+      if (trashOpen) await loadTrash();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '删除失败');
+    }
+  }
+
+  async function restoreTrashItem(nodeId: string, title: string) {
+    if (!canWrite) return;
+    setRestoringId(nodeId);
+    setError(null);
+    try {
+      const restored = await treeApi.restore(nodeId);
+      setStatus(
+        restored.parentId
+          ? `已恢复「${title}」`
+          : `已恢复「${title}」到库根（原父节点不可用）`,
+      );
+      await refreshTree();
+      await loadTrash();
+      if (restored.type === 'doc') {
+        await openNode(restored);
+      } else {
+        setSelected(restored);
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '恢复失败');
+    } finally {
+      setRestoringId(null);
     }
   }
 
@@ -844,6 +890,57 @@ export function KbWorkspacePage() {
               </ul>
             </div>
           )}
+          <div className="trash-panel" aria-label="回收站">
+            <div className="recent-docs-head">
+              <strong>回收站</strong>
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => setTrashOpen((v) => !v)}
+                aria-expanded={trashOpen}
+              >
+                {trashOpen
+                  ? '收起'
+                  : trashItems.length
+                    ? `展开 (${trashItems.length})`
+                    : '展开'}
+              </button>
+            </div>
+            {trashOpen && (
+              <>
+                {trashLoading ? (
+                  <p className="hint">加载中…</p>
+                ) : trashItems.length === 0 ? (
+                  <p className="hint">暂无已删除节点</p>
+                ) : (
+                  <ul className="trash-list">
+                    {trashItems.map((n) => (
+                      <li key={n.id} className="trash-item">
+                        <div className="trash-item-meta">
+                          <span className="tree-type tree-type--doc" aria-hidden>
+                            {n.type === 'folder' ? 'F' : 'D'}
+                          </span>
+                          <span className="trash-item-title" title={n.title}>
+                            {n.title}
+                          </span>
+                        </div>
+                        {canWrite && (
+                          <button
+                            type="button"
+                            className="btn secondary small"
+                            disabled={restoringId === n.id}
+                            onClick={() => void restoreTrashItem(n.id, n.title)}
+                          >
+                            {restoringId === n.id ? '…' : '恢复'}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
         </div>
         <div className="tree-actions">
           <div className="row">

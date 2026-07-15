@@ -1220,6 +1220,51 @@ select.input,
   font-weight: var(--font-semibold);
 }
 
+.trash-panel {
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+
+.trash-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 10rem;
+  overflow: auto;
+}
+
+.trash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+}
+
+.trash-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.trash-item-title {
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
 .tree-collapse-actions {
   padding: 0 var(--space-1);
   gap: var(--space-2);

@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.9
+  version: 0.1.10
   contact:
     name: yuque1
 
@@ -568,6 +568,50 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /kbs/{kbId}/trash:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [Tree]
+      summary: 列出知识库回收站（软删节点）
+      description: |
+        成员可读。按 deletedAt 倒序，最多 100 条。
+        仅已软删节点；`data.items[].deletedAt` 非空。
+      operationId: listKbTrash
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeTree'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{nodeId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    post:
+      tags: [Tree]
+      summary: 从回收站恢复节点
+      description: |
+        仅 owner/editor。若原 parent 已软删或不存在，则挂到库根（parentId=null）。
+        清除 deletedAt，重新分配 sortOrder。
+      operationId: restoreNode
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeNode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /nodes/{nodeId}/move:
     parameters:
       - $ref: '#/components/parameters/NodeId'
@@ -1000,6 +1044,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 回收站列表中非空；正常树节点可省略
 
     UserBrief:
       type: object

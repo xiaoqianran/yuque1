@@ -62,6 +62,19 @@ export class TreeController {
     return ok(result.data);
   }
 
+  @Get('kbs/:kbId/trash')
+  async listTrash(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('kbId') kbId: string,
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.tree.listTrash(userId, kbId);
+    if (!result.ok) return this.failResult(res, result);
+    return ok(result.data);
+  }
+
   @Get('kbs/:kbId/nodes')
   async search(
     @Req() req: Request,
@@ -136,6 +149,19 @@ export class TreeController {
     const result = await this.tree.delete(userId, nodeId);
     if (!result.ok) return this.failResult(res, result);
     return ok(null);
+  }
+
+  @Post('nodes/:nodeId/restore')
+  async restore(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('nodeId') nodeId: string,
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.tree.restore(userId, nodeId);
+    if (!result.ok) return this.failResult(res, result);
+    return ok(result.data);
   }
 
   @Post('nodes/:nodeId/move')

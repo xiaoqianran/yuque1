@@ -57,6 +57,8 @@ export const kbApi = {
 export const treeApi = {
   list: (kbId: string) =>
     apiRequest<{ items: PublicNode[] }>(`/kbs/${kbId}/tree`),
+  trash: (kbId: string) =>
+    apiRequest<{ items: PublicNode[] }>(`/kbs/${kbId}/trash`),
   search: (kbId: string, q: string, limit = 50) =>
     apiRequest<{ items: PublicNode[] }>(
       `/kbs/${kbId}/nodes?q=${encodeURIComponent(q)}&limit=${limit}`,
@@ -83,6 +85,8 @@ export const treeApi = {
     }),
   remove: (nodeId: string) =>
     apiRequest<null>(`/nodes/${nodeId}`, { method: 'DELETE' }),
+  restore: (nodeId: string) =>
+    apiRequest<PublicNode>(`/nodes/${nodeId}/restore`, { method: 'POST' }),
 };
 
 export const contentApi = {

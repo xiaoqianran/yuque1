@@ -37,6 +37,7 @@ export type PublicNode = {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 };
 
 export type DocumentContent = {

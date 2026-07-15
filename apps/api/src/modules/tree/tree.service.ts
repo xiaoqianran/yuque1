@@ -13,8 +13,8 @@ import type {
 export class TreeService {
   constructor(private readonly prisma: PrismaService) {}
 
-  toPublic(n: TreeNode): PublicNode {
-    return {
+  toPublic(n: TreeNode, opts?: { includeDeletedAt?: boolean }): PublicNode {
+    const base: PublicNode = {
       id: n.id,
       knowledgeBaseId: n.knowledgeBaseId,
       parentId: n.parentId,
@@ -24,6 +24,10 @@ export class TreeService {
       createdAt: n.createdAt.toISOString(),
       updatedAt: n.updatedAt.toISOString(),
     };
+    if (opts?.includeDeletedAt) {
+      base.deletedAt = n.deletedAt ? n.deletedAt.toISOString() : null;
+    }
+    return base;
   }
 
   private async membership(
@@ -289,6 +293,88 @@ export class TreeService {
     });
 
     return { ok: true, data: null };
+  }
+
+  /** Soft-deleted nodes for a KB (newest first). */
+  async listTrash(
+    userId: string,
+    kbId: string,
+  ): Promise<ServiceResult<{ items: PublicNode[] }>> {
+    const m = await this.membership(kbId, userId);
+    if (!m) return this.notFound();
+
+    const rows = await this.prisma.treeNode.findMany({
+      where: { knowledgeBaseId: kbId, deletedAt: { not: null } },
+      orderBy: [{ deletedAt: 'desc' }],
+      take: 100,
+    });
+    return {
+      ok: true,
+      data: {
+        items: rows.map((r) => this.toPublic(r, { includeDeletedAt: true })),
+      },
+    };
+  }
+
+  /**
+   * Restore soft-deleted node. If parent is missing/deleted, attach to root.
+   */
+  async restore(
+    userId: string,
+    nodeId: string,
+  ): Promise<ServiceResult<PublicNode>> {
+    const node = await this.prisma.treeNode.findFirst({
+      where: { id: nodeId, deletedAt: { not: null } },
+    });
+    if (!node) return this.notFound();
+
+    const m = await this.membership(node.knowledgeBaseId, userId);
+    if (!m) return this.notFound();
+    if (!this.canWrite(m.role)) return this.notFound();
+
+    let parentId = node.parentId;
+    if (parentId) {
+      const parent = await this.prisma.treeNode.findFirst({
+        where: { id: parentId, deletedAt: null },
+      });
+      if (!parent || parent.knowledgeBaseId !== node.knowledgeBaseId) {
+        parentId = null;
+      }
+    }
+
+    const sortOrder = await this.nextSortOrder(
+      node.knowledgeBaseId,
+      parentId,
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.treeNode.update({
+        where: { id: nodeId },
+        data: {
+          deletedAt: null,
+          parentId,
+          sortOrder,
+          updatedBy: userId,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          actorUserId: userId,
+          action: 'node.restore',
+          resourceType: 'node',
+          resourceId: nodeId,
+          metadata: {
+            knowledgeBaseId: node.knowledgeBaseId,
+            parentId,
+            reparentedToRoot: parentId !== node.parentId,
+          },
+        },
+      });
+      return row;
+    });
+
+    return { ok: true, data: this.toPublic(updated) };
   }
 
   /**
