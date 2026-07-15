@@ -180,6 +180,39 @@ async function main() {
   }
   console.log('    content saved v2');
 
+  // 4b) Overwrite → content_revisions
+  const bodyMdAfterOverwrite = `${bodyMd}\n\noverwritten`;
+  r = await a.req('POST', `/nodes/${nodeId}/content/overwrite`, {
+    baseVersion: 2,
+    bodyMd: bodyMdAfterOverwrite,
+  });
+  assertOk('overwrite content', r);
+  if (r.json.data?.version !== 3) {
+    throw new Error(`overwrite: expected version 3, got ${r.json.data?.version}`);
+  }
+  console.log('    content overwritten v3');
+
+  // 4c) List revisions
+  r = await a.req('GET', `/nodes/${nodeId}/content/revisions`);
+  assertOk('list revisions', r);
+  const revItems = r.json.data?.items;
+  if (!Array.isArray(revItems) || revItems.length < 1) {
+    throw new Error(`list revisions: empty ${JSON.stringify(r.json)}`);
+  }
+  if (revItems[0].version !== 2 || revItems[0].reason !== 'overwrite_on_conflict') {
+    throw new Error(`list revisions: unexpected item ${JSON.stringify(revItems[0])}`);
+  }
+  const revisionId = revItems[0].id;
+  console.log(`    revisions listed n=${revItems.length} id=${revisionId}`);
+
+  // 4d) Get revision detail (pre-overwrite body = body before overwrite)
+  r = await a.req('GET', `/nodes/${nodeId}/content/revisions/${revisionId}`);
+  assertOk('get revision', r);
+  if (r.json.data?.bodyMd !== bodyMd || r.json.data?.version !== 2) {
+    throw new Error(`get revision: body mismatch ${JSON.stringify(r.json)}`);
+  }
+  console.log('    revision detail ok');
+
   // 5) Enable share with future expiresAt
   const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
   r = await a.req('PUT', `/nodes/${nodeId}/share`, { expiresAt });
@@ -202,11 +235,21 @@ async function main() {
   }
   console.log('    share past expiresAt rejected');
 
-  // 6) Public read without session
+  // 6) Public read without session (current body after overwrite)
+  r = await a.req('GET', `/nodes/${nodeId}/content`);
+  assertOk('get content after overwrite', r);
+  const currentBody = r.json.data?.bodyMd;
+  if (currentBody !== bodyMdAfterOverwrite) {
+    throw new Error(
+      `content after overwrite mismatch: expected=${JSON.stringify(bodyMdAfterOverwrite)} got=${JSON.stringify(currentBody)}`,
+    );
+  }
   r = await anon.req('GET', `/share/${token}`, undefined, { auth: false });
   assertOk('share public get', r);
-  if (r.json.data?.title !== docTitle || r.json.data?.bodyMd !== bodyMd) {
-    throw new Error('share public content mismatch');
+  if (r.json.data?.title !== docTitle || r.json.data?.bodyMd !== currentBody) {
+    throw new Error(
+      `share public content mismatch: title=${JSON.stringify(r.json.data?.title)} body=${JSON.stringify(r.json.data?.bodyMd)} expectedBody=${JSON.stringify(currentBody)}`,
+    );
   }
   console.log('    public share read ok');
 
@@ -234,11 +277,13 @@ async function main() {
   if (!found) throw new Error('B list kbs: shared kb missing');
   console.log('    B sees kb in list');
 
-  // 10) B can read content
+  // 10) B can read content (current after overwrite)
   r = await b.req('GET', `/nodes/${nodeId}/content`);
   assertOk('B get content', r);
-  if (r.json.data?.bodyMd !== bodyMd) {
-    throw new Error('B get content body mismatch');
+  if (r.json.data?.bodyMd !== bodyMdAfterOverwrite) {
+    throw new Error(
+      `B get content body mismatch: got=${JSON.stringify(r.json.data?.bodyMd)}`,
+    );
   }
   console.log('    B can read content');
 

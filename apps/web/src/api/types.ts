@@ -53,6 +53,19 @@ export type ContentMeta = {
   updatedAt: string;
 };
 
+export type ContentRevisionBrief = {
+  id: string;
+  version: number;
+  reason: string;
+  createdBy: { id: string; nickname: string } | null;
+  createdAt: string;
+};
+
+export type ContentRevision = ContentRevisionBrief & {
+  nodeId: string;
+  bodyMd: string;
+};
+
 export type ShareInfo = {
   enabled: boolean;
   token: string | null;

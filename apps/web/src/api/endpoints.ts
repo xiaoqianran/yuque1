@@ -1,6 +1,8 @@
 import { apiRequest } from './client';
 import type {
   ContentMeta,
+  ContentRevision,
+  ContentRevisionBrief,
   DocumentContent,
   KbMember,
   PublicKb,
@@ -97,6 +99,14 @@ export const contentApi = {
         method: 'POST',
         body: JSON.stringify({ bodyMd, title }),
       },
+    ),
+  listRevisions: (nodeId: string) =>
+    apiRequest<{ items: ContentRevisionBrief[] }>(
+      `/nodes/${nodeId}/content/revisions`,
+    ),
+  getRevision: (nodeId: string, revisionId: string) =>
+    apiRequest<ContentRevision>(
+      `/nodes/${nodeId}/content/revisions/${revisionId}`,
     ),
 };
 
