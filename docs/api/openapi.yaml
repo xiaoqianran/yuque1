@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.2
+  version: 0.1.3
   contact:
     name: yuque1
 
@@ -31,6 +31,7 @@ tags:
   - name: Health
   - name: Auth
   - name: KnowledgeBases
+  - name: Members
   - name: Tree
   - name: Content
   - name: Share
@@ -264,6 +265,108 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /kbs/{kbId}/members:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [Members]
+      summary: 知识库成员列表
+      description: 任意成员可读；权限真源 `kb_members`。
+      operationId: listKbMembers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeMemberList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Members]
+      summary: 添加成员
+      description: |
+        仅 owner。按已注册用户手机号添加，role 仅 `editor` | `reader`（禁止直接添加 owner）。
+        用户不存在 → 404；已是成员 → 409 VALIDATION_ERROR 或 CONFLICT。
+      operationId: addKbMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+      responses:
+        '201':
+          description: 已添加
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /kbs/{kbId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+      - name: userId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Ulid'
+    patch:
+      tags: [Members]
+      summary: 变更成员角色
+      description: |
+        仅 owner。role 仅 `editor` | `reader`；不可将目标设为 owner，不可变更当前唯一 owner。
+      operationId: updateKbMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Members]
+      summary: 移除成员
+      description: 仅 owner；不可移除 owner。
+      operationId: removeKbMember
+      responses:
+        '200':
+          description: 已移除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /kbs/{kbId}/tree:
     parameters:
@@ -921,6 +1024,51 @@ components:
           nullable: true
       additionalProperties: false
 
+    KbMemberRole:
+      type: string
+      enum: [owner, editor, reader]
+
+    MemberRoleAssignable:
+      type: string
+      enum: [editor, reader]
+      description: 添加/变更成员时允许的角色（不含 owner）
+
+    KbMember:
+      type: object
+      required: [userId, mobileE164, nickname, role, createdAt]
+      properties:
+        userId:
+          $ref: '#/components/schemas/Ulid'
+        mobileE164:
+          type: string
+        nickname:
+          type: string
+        role:
+          $ref: '#/components/schemas/KbMemberRole'
+        createdAt:
+          type: string
+          format: date-time
+
+    AddMemberRequest:
+      type: object
+      required: [mobileE164, role]
+      properties:
+        mobileE164:
+          type: string
+          pattern: '^\+[1-9]\d{6,14}$'
+          example: '+8613800138001'
+        role:
+          $ref: '#/components/schemas/MemberRoleAssignable'
+      additionalProperties: false
+
+    UpdateMemberRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/MemberRoleAssignable'
+      additionalProperties: false
+
     CreateNodeRequest:
       type: object
       required: [type, title]
@@ -1182,6 +1330,32 @@ components:
               items:
                 $ref: '#/components/schemas/TreeNode'
               description: 扁平列表，含 parentId，客户端建树（字段名统一 items）
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeMember:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/KbMember'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeMemberList:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/KbMember'
         error: { nullable: true }
         requestId: { type: string }
 
