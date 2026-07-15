@@ -17,6 +17,11 @@ import {
   isDirty,
 } from '../ui/autosave';
 import {
+  computeDocStats,
+  downloadMarkdownFile,
+  formatDocStats,
+} from '../ui/docStats';
+import {
   extractOutline,
   focusTextareaLine,
   MarkdownView,
@@ -184,6 +189,8 @@ export function KbWorkspacePage() {
     () => (selected?.type === 'doc' ? extractOutline(body) : []),
     [selected?.type, body],
   );
+  const docStats = useMemo(() => computeDocStats(body), [body]);
+  const docStatsLabel = useMemo(() => formatDocStats(docStats), [docStats]);
   const reorderAvail = useMemo(
     () =>
       selected
@@ -348,6 +355,17 @@ export function KbWorkspacePage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selected?.type, canWrite, saving, version, save]);
+
+  // Warn when leaving with unsaved edits
+  useEffect(() => {
+    if (!dirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
@@ -956,6 +974,16 @@ export function KbWorkspacePage() {
                 >
                   保存
                 </button>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() =>
+                    downloadMarkdownFile(selected.title || 'untitled', body)
+                  }
+                  title="下载当前编辑区内容为 .md"
+                >
+                  导出 MD
+                </button>
                 <label className="share-expiry-inline">
                   <span className="muted">有效期</span>
                   <select
@@ -1018,6 +1046,10 @@ export function KbWorkspacePage() {
               </div>
             </div>
             {status && <p className="status-line">{status}</p>}
+            <p className="doc-stats muted" aria-live="polite">
+              {docStatsLabel}
+              {dirty ? ' · 未保存' : ''}
+            </p>
             {revisionsOpen && (
               <div className="revisions-panel card" aria-label="覆盖前历史快照">
                 <div className="row" style={{ width: '100%' }}>
