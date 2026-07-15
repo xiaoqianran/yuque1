@@ -15,7 +15,7 @@
 | 文档树 | folder/doc、搜索、重命名、移动、折叠、**拖拽排序**、**复制文档**、键盘上下选择 |
 | 回收站 | 软删列表、恢复、永久删除、**清空回收站** |
 | 工作区 IA | 侧栏仅导航+树；设置/成员/分享/历史进 Dialog/Drawer；默认打开最近/首篇文档 |
-| 正文 | CodeMirror 编辑 / **react-markdown GFM 预览** / 大纲 / 字数 / 导入·导出 MD / **导出知识库 ZIP** / 专注 / Ctrl+S / 自动保存 |
+| 正文 | CodeMirror 编辑 / **react-markdown GFM 预览** / 大纲 / 字数 / 导入·导出 MD / **导入·导出知识库 ZIP** / 专注 / Ctrl+S / 自动保存 |
 | 分享 | token 公开只读；有效期；分享页 MD 渲染 |
 | 成员 | owner 添加 editor/reader；转让 owner |
 | UI | 平面内容优先工作区 · 系统中文字体 · 可访问确认 Dialog |

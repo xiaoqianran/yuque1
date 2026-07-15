@@ -6,6 +6,7 @@ export type KbMenuAction =
   | 'settings'
   | 'members'
   | 'export-zip'
+  | 'import-zip'
   | 'expand-all'
   | 'collapse-all'
   | 'trash'
@@ -99,6 +100,16 @@ export function KnowledgeHeader({ kb, onAction }: Props) {
             }}
           >
             导出 Markdown ZIP
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onAction('import-zip');
+            }}
+          >
+            导入 Markdown ZIP
           </button>
           <button
             type="button"

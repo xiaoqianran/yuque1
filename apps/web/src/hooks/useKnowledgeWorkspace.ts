@@ -6,6 +6,12 @@ import {
   downloadZipFile,
   type ZipFileEntry,
 } from '../ui/exportKbZip';
+import {
+  parseMarkdownZip,
+  planZipImport,
+  readFileAsUint8Array,
+  validateImportZipFile,
+} from '../ui/importKbZip';
 import { ApiError } from '../api/types';
 import type {
   ContentRevision,
@@ -72,6 +78,7 @@ export function useKnowledgeWorkspace(kbId: string) {
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
   const [emptyingTrash, setEmptyingTrash] = useState(false);
   const [exportingZip, setExportingZip] = useState(false);
+  const [importingZip, setImportingZip] = useState(false);
   const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -568,6 +575,80 @@ export function useKnowledgeWorkspace(kbId: string) {
     }
   }, [kb, kbId, exportingZip]);
 
+  /**
+   * Import Markdown ZIP: create folders/docs under current KB root, put bodies.
+   * Does not wipe existing tree — imports as additional nodes.
+   */
+  const importKbZip = useCallback(
+    async (file: File) => {
+      if (!canWrite || importingZip) return;
+      const check = validateImportZipFile(file);
+      if (!check.ok) {
+        setError(check.message);
+        return;
+      }
+      setImportingZip(true);
+      setError(null);
+      setStatus('正在导入 ZIP…');
+      try {
+        const bytes = await readFileAsUint8Array(file);
+        const parsed = parseMarkdownZip(bytes);
+        if (!parsed.ok) {
+          setError(parsed.message);
+          setStatus(null);
+          return;
+        }
+        const plan = planZipImport(parsed.files);
+        if (!plan.ok) {
+          setError(plan.message);
+          setStatus(null);
+          return;
+        }
+
+        const pathToId = new Map<string | null, string | null>();
+        pathToId.set(null, null);
+
+        for (const op of plan.ops) {
+          const parentId = pathToId.get(op.parentPathKey) ?? null;
+          if (op.kind === 'folder') {
+            const node = await treeApi.create(kbId, {
+              type: 'folder',
+              title: op.title,
+              parentId,
+            });
+            pathToId.set(op.pathKey, node.id);
+          } else {
+            const node = await treeApi.create(kbId, {
+              type: 'doc',
+              title: op.title,
+              parentId,
+            });
+            pathToId.set(op.pathKey, node.id);
+            if (op.body) {
+              try {
+                await contentApi.put(node.id, 1, op.body);
+              } catch {
+                // keep empty body if put fails
+              }
+            }
+          }
+        }
+
+        await refreshTree();
+        setStatus(
+          `已导入 ${plan.docCount} 篇文档` +
+            (plan.folderCount ? `、${plan.folderCount} 个文件夹` : ''),
+        );
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : '导入 ZIP 失败');
+        setStatus(null);
+      } finally {
+        setImportingZip(false);
+      }
+    },
+    [canWrite, importingZip, kbId, refreshTree],
+  );
+
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) {
@@ -816,6 +897,8 @@ export function useKnowledgeWorkspace(kbId: string) {
     confirmEmptyTrash,
     exportingZip,
     exportKbZip,
+    importingZip,
+    importKbZip,
     saveKbMeta,
     kbSaving,
     enableShare,
