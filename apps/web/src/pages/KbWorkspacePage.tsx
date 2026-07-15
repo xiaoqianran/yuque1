@@ -17,6 +17,9 @@ import {
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
+  planSiblingReorder,
+  siblingReorderAvailability,
+  type SiblingReorderDirection,
 } from '../ui/treeOps';
 import {
   expiresAtFromPreset,
@@ -121,6 +124,13 @@ export function KbWorkspacePage() {
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
     () => (selected ? buildMoveParentOptions(nodes, selected.id) : []),
+    [nodes, selected],
+  );
+  const reorderAvail = useMemo(
+    () =>
+      selected
+        ? siblingReorderAvailability(nodes, selected.id)
+        : { canUp: false, canDown: false },
     [nodes, selected],
   );
 
@@ -365,6 +375,31 @@ export function KbWorkspacePage() {
       await refreshTree();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '移动失败');
+    }
+  }
+
+  async function reorderSibling(direction: SiblingReorderDirection) {
+    if (!selected) return;
+    const plan = planSiblingReorder(nodes, selected.id, direction);
+    if (!plan.ok) {
+      setStatus(plan.message);
+      return;
+    }
+    try {
+      for (const m of plan.moves) {
+        await treeApi.move(m.id, m.parentId, m.sortOrder);
+      }
+      const data = await treeApi.list(kbId);
+      setNodes(data.items);
+      const me = data.items.find((n) => n.id === selected.id);
+      if (me) {
+        setSelected(me);
+        setMoveParentId(me.parentId ?? '');
+      }
+      setStatus(direction === 'up' ? '已上移' : '已下移');
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '调整顺序失败');
     }
   }
 
@@ -633,6 +668,27 @@ export function KbWorkspacePage() {
                   </button>
                 </div>
               </label>
+              <div className="row tree-reorder">
+                <span className="muted">同级顺序</span>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={!reorderAvail.canUp}
+                  onClick={() => void reorderSibling('up')}
+                  title={reorderAvail.canUp ? '与上一个同级节点交换顺序' : '已在同级最前'}
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={!reorderAvail.canDown}
+                  onClick={() => void reorderSibling('down')}
+                  title={reorderAvail.canDown ? '与下一个同级节点交换顺序' : '已在同级最后'}
+                >
+                  下移
+                </button>
+              </div>
               <button
                 type="button"
                 className="btn secondary small danger-outline"
