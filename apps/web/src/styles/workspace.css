@@ -210,10 +210,32 @@
   cursor: pointer;
   font-size: 13px;
   color: var(--ws-text-primary);
+  width: 100%;
 }
 
 .ws-search-hit:hover {
   background: var(--ws-hover-bg);
+}
+
+.ws-search-hit-kind {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  background: var(--ws-hover-bg);
+  color: var(--ws-text-secondary);
+}
+
+.ws-search-hit-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Document header */

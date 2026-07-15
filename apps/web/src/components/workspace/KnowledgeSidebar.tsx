@@ -18,6 +18,8 @@ type Props = {
   searchHits: PublicNode[] | null;
   onClearSearch: () => void;
   onSelect: (n: PublicNode) => void;
+  /** Select a search hit (may open editor find with current query). */
+  onSearchHitSelect?: (n: PublicNode) => void;
   onToggleCollapse: (id: string) => void;
   onCreate: (type: 'folder' | 'doc') => void;
   onCreateUnder: (type: 'folder' | 'doc', contextNode: PublicNode) => void;
@@ -51,6 +53,7 @@ export function KnowledgeSidebar({
   searchHits,
   onClearSearch,
   onSelect,
+  onSearchHitSelect,
   onToggleCollapse,
   onCreate,
   onCreateUnder,
@@ -124,9 +127,19 @@ export function KnowledgeSidebar({
                   type="button"
                   className="ws-search-hit"
                   role="option"
-                  onClick={() => onSelect(n)}
+                  title={
+                    n.type === 'folder'
+                      ? `文件夹 · ${n.title}`
+                      : `文档 · ${n.title}`
+                  }
+                  onClick={() =>
+                    (onSearchHitSelect ?? onSelect)(n)
+                  }
                 >
-                  {n.title}
+                  <span className="ws-search-hit-kind" aria-hidden>
+                    {n.type === 'folder' ? 'F' : 'D'}
+                  </span>
+                  <span className="ws-search-hit-title">{n.title}</span>
                 </button>
               ))
             )}
