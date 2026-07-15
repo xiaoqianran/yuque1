@@ -14,7 +14,7 @@ export function StatePanel({ phase, title, description, action }: Props) {
   return (
     <div className={statePanelClass(phase)} role="status" aria-live="polite">
       <div className="state-panel__icon" aria-hidden>
-        {phase === 'loading' ? '⏳' : phase === 'error' ? '!' : '∅'}
+        {phase === 'loading' ? null : phase === 'error' ? '!' : '○'}
       </div>
       <div className="state-panel__body">
         <p className="state-panel__title">{title}</p>

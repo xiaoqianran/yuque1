@@ -57,12 +57,15 @@ export function SharePage() {
 
       {phase === 'ready' && doc && (
         <section className="card share-view" aria-labelledby="share-title">
-          <p className="share-kicker">公开只读分享</p>
+          <p className="share-kicker">Public read-only</p>
           <h1 id="share-title">{doc.title}</h1>
           {doc.updatedAt && (
             <p className="muted">更新于 {formatUpdatedAt(doc.updatedAt)}</p>
           )}
           <MarkdownView source={doc.bodyMd} className="md-preview share-md" />
+          <p className="share-footer muted">
+            由 <Link to="/">yuque1</Link> 生成 · 无需登录即可阅读
+          </p>
         </section>
       )}
     </div>

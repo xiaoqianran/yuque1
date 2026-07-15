@@ -14,6 +14,8 @@ export function UserMenu() {
 
   if (!user) return null;
 
+  const initial = (user.nickname.trim()[0] || 'U').toUpperCase();
+
   function startEdit() {
     setNickDraft(user!.nickname);
     setEmailDraft(user!.email ?? '');
@@ -57,6 +59,9 @@ export function UserMenu() {
           setStatus(null);
         }}
       >
+        <span className="user-avatar" aria-hidden>
+          {initial}
+        </span>
         <span className="header-user">{user.nickname}</span>
         <span className="user-menu-caret" aria-hidden>
           ▾

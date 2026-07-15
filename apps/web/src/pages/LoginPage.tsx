@@ -20,9 +20,7 @@ export function LoginPage() {
     return (
       <div className="auth-gate">
         <div className="state-panel state-panel--loading" role="status">
-          <div className="state-panel__icon" aria-hidden>
-            …
-          </div>
+          <div className="state-panel__icon" aria-hidden />
           <div className="state-panel__body">
             <p className="state-panel__title">正在恢复会话</p>
             <p className="state-panel__desc">请稍候</p>
@@ -69,58 +67,87 @@ export function LoginPage() {
   }
 
   return (
-    <section className="card login-card" aria-labelledby="login-title">
-      <h1 id="login-title">登录 yuque1</h1>
-      <p className="muted">短信验证码登录。本地开发可用 mock 验证码完成联调。</p>
-      <form className="form" onSubmit={onSubmit}>
-        <label>
-          手机号（E.164）
-          <input
-            value={mobile}
-            onChange={(e) => setMobile(e.target.value)}
-            placeholder="+8613800138000"
-            autoComplete="tel"
-            inputMode="tel"
-            required
-          />
-        </label>
-        <label>
-          验证码
-          <div className="row">
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="6 位数字"
-              maxLength={6}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              required
-              style={{ flex: 1 }}
-            />
-            <button type="button" className="btn secondary" disabled={busy} onClick={onSend}>
-              发送验证码
+    <div className="login-shell">
+      <aside className="login-brand" aria-hidden={false}>
+        <p className="page-kicker" style={{ color: '#93c5fd' }}>
+          Self-hosted knowledge
+        </p>
+        <h2>写清楚，管得住，分得开</h2>
+        <p>
+          企业级知识库：文档树、乐观锁冲突、成员协作与安全分享，开箱即用。
+        </p>
+        <ul className="login-brand-list">
+          <li>手机号短信登录 · 会话 Cookie</li>
+          <li>folder / doc 树 · 正文版本冲突三选一</li>
+          <li>成员角色 · Owner 转让 · 链接有效期</li>
+        </ul>
+      </aside>
+      <div className="login-panel">
+        <section className="card login-card" aria-labelledby="login-title">
+          <p className="page-kicker">Welcome</p>
+          <h1 id="login-title">登录 yuque1</h1>
+          <p className="muted">短信验证码登录。本地开发可用 mock 验证码完成联调。</p>
+          <form className="form" onSubmit={onSubmit}>
+            <label>
+              手机号（E.164）
+              <input
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                placeholder="+8613800138000"
+                autoComplete="tel"
+                inputMode="tel"
+                required
+              />
+            </label>
+            <label>
+              验证码
+              <div className="row">
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="6 位数字"
+                  maxLength={6}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={busy}
+                  onClick={() => void onSend()}
+                >
+                  发送验证码
+                </button>
+              </div>
+            </label>
+            <label>
+              昵称（仅新用户可选）
+              <input
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="显示名称"
+                maxLength={64}
+                autoComplete="nickname"
+              />
+            </label>
+            {msg && (
+              <p
+                className={
+                  msgKind === 'ok' ? 'form-msg form-msg--ok' : 'form-msg form-msg--error'
+                }
+                role="alert"
+              >
+                {msg}
+              </p>
+            )}
+            <button type="submit" className="btn primary" disabled={busy}>
+              {busy ? '处理中…' : '登录'}
             </button>
-          </div>
-        </label>
-        <label>
-          昵称（仅新用户可选）
-          <input
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="显示名称"
-            maxLength={64}
-            autoComplete="nickname"
-          />
-        </label>
-        {msg && (
-          <p className={msgKind === 'ok' ? 'form-msg form-msg--ok' : 'form-msg form-msg--error'} role="alert">
-            {msg}
-          </p>
-        )}
-        <button type="submit" className="btn primary" disabled={busy}>
-          {busy ? '处理中…' : '登录'}
-        </button>
-      </form>
-    </section>
+          </form>
+        </section>
+      </div>
+    </div>
   );
 }
