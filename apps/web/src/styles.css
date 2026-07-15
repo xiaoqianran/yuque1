@@ -659,6 +659,33 @@ a:focus-visible {
   background: var(--color-bg);
 }
 
+.workspace.workspace--focus {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  height: 100vh;
+  grid-template-columns: 1fr;
+  background: var(--color-bg);
+  box-shadow: none;
+}
+
+.workspace.workspace--focus .sidebar {
+  display: none;
+}
+
+.workspace.workspace--focus .editor-pane {
+  max-width: 920px;
+  width: 100%;
+  margin: 0 auto;
+  padding-top: var(--space-5);
+}
+
+.btn.active-focus {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-ink);
+  border-color: var(--color-primary);
+}
+
 .sidebar {
   border-right: 1px solid var(--color-border);
   background: var(--color-surface-sidebar);
@@ -1501,6 +1528,11 @@ a:focus-visible {
     grid-template-columns: 1fr;
     height: auto;
     min-height: calc(100vh - var(--header-height));
+  }
+
+  .workspace.workspace--focus {
+    height: 100vh;
+    min-height: 100vh;
   }
 
   .sidebar {

@@ -21,6 +21,7 @@ import {
   downloadMarkdownFile,
   formatDocStats,
 } from '../ui/docStats';
+import { isExitFocusKey, isToggleFocusShortcut } from '../ui/focusMode';
 import {
   readFileAsText,
   validateImportFile,
@@ -186,6 +187,7 @@ export function KbWorkspacePage() {
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [focusMode, setFocusMode] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -387,9 +389,25 @@ export function KbWorkspacePage() {
     save,
   ]);
 
-  // Ctrl/Cmd+S → manual save (block browser "Save Page")
+  // Ctrl/Cmd+S → manual save; Ctrl/Cmd+Shift+F → focus mode; Esc → exit focus
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (isToggleFocusShortcut(e)) {
+        e.preventDefault();
+        if (selected?.type === 'doc') {
+          setFocusMode((v) => {
+            const next = !v;
+            if (next) setOutlineOpen(false);
+            return next;
+          });
+        }
+        return;
+      }
+      if (focusMode && isExitFocusKey(e)) {
+        e.preventDefault();
+        setFocusMode(false);
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== 's' && e.key !== 'S') return;
       e.preventDefault();
@@ -400,7 +418,12 @@ export function KbWorkspacePage() {
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selected?.type, canWrite, saving, version, save]);
+  }, [selected?.type, canWrite, saving, version, save, focusMode]);
+
+  // Leave focus when switching away from a doc
+  useEffect(() => {
+    if (selected?.type !== 'doc' && focusMode) setFocusMode(false);
+  }, [selected?.type, focusMode]);
 
   // Warn when leaving with unsaved edits
   useEffect(() => {
@@ -744,8 +767,8 @@ export function KbWorkspacePage() {
   }
 
   return (
-    <div className="workspace">
-      <aside className="sidebar" aria-label="文档树">
+    <div className={`workspace${focusMode ? ' workspace--focus' : ''}`}>
+      <aside className="sidebar" aria-label="文档树" hidden={focusMode}>
         <div className="sidebar-head">
           <Link to="/" className="back">
             ← 全部知识库
@@ -1073,6 +1096,21 @@ export function KbWorkspacePage() {
                 >
                   {outlineOpen ? '收起大纲' : '大纲'}
                   {outline.length > 0 ? ` (${outline.length})` : ''}
+                </button>
+                <button
+                  type="button"
+                  className={`btn secondary small${focusMode ? ' active-focus' : ''}`}
+                  onClick={() =>
+                    setFocusMode((v) => {
+                      const next = !v;
+                      if (next) setOutlineOpen(false);
+                      return next;
+                    })
+                  }
+                  aria-pressed={focusMode}
+                  title="Ctrl/Cmd+Shift+F · Esc 退出"
+                >
+                  {focusMode ? '退出专注' : '专注'}
                 </button>
                 <button
                   type="button"
