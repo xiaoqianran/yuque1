@@ -328,3 +328,190 @@ export function adjacentVisibleNode(
   if (next < 0 || next >= visible.length) return visible[idx]!;
   return visible[next]!;
 }
+
+export type TreeDropPosition = 'before' | 'after' | 'inside';
+
+export type TreeDropPlan =
+  | {
+      ok: true;
+      nodeId: string;
+      parentId: string | null;
+      sortOrder: number;
+    }
+  | {
+      ok: false;
+      reason:
+        | 'not_found'
+        | 'same_node'
+        | 'cycle'
+        | 'noop'
+        | 'invalid_inside';
+      message: string;
+    };
+
+/** True if `ancestorId` is an ancestor of `nodeId` (or equal). */
+export function isAncestorOf(
+  nodes: PublicNode[],
+  ancestorId: string,
+  nodeId: string,
+): boolean {
+  if (ancestorId === nodeId) return true;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  let cur = byId.get(nodeId);
+  const guard = new Set<string>();
+  while (cur?.parentId) {
+    if (cur.parentId === ancestorId) return true;
+    if (guard.has(cur.parentId)) break;
+    guard.add(cur.parentId);
+    cur = byId.get(cur.parentId);
+  }
+  return false;
+}
+
+function siblingsUnder(
+  nodes: PublicNode[],
+  parentId: string | null,
+  excludeId?: string,
+): PublicNode[] {
+  return nodes
+    .filter(
+      (n) =>
+        n.parentId === parentId && (excludeId === undefined || n.id !== excludeId),
+    )
+    .slice()
+    .sort(compareSiblingOrder);
+}
+
+/**
+ * Compute sortOrder to insert at `index` among already-sorted siblings
+ * (excluding the moving node). index 0 = first.
+ */
+export function sortOrderAtIndex(
+  siblings: PublicNode[],
+  index: number,
+): number {
+  if (siblings.length === 0) return 1000;
+  if (index <= 0) {
+    return siblings[0]!.sortOrder - 1000;
+  }
+  if (index >= siblings.length) {
+    return siblings[siblings.length - 1]!.sortOrder + 1000;
+  }
+  const prev = siblings[index - 1]!.sortOrder;
+  const next = siblings[index]!.sortOrder;
+  if (next - prev > 1) {
+    return Math.floor((prev + next) / 2);
+  }
+  // Collapsed spacing — place after prev; server accepts any int.
+  return prev + 1;
+}
+
+/**
+ * Map a raw insert index in the full sibling list (including active)
+ * to an index in the list with active removed.
+ */
+function insertIndexExcludingActive(
+  fullSibs: PublicNode[],
+  rawIndex: number,
+  activeId: string,
+): number {
+  let count = 0;
+  const limit = Math.max(0, Math.min(rawIndex, fullSibs.length));
+  for (let i = 0; i < limit; i++) {
+    if (fullSibs[i]!.id !== activeId) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Plan a tree drag-drop move against real POST /nodes/:id/move.
+ *
+ * - inside folder → parent = folder, append
+ * - inside doc → treated as after that doc (sibling; docs stay leaves for drop UX)
+ * - before/after → same parent as over, reordered among siblings
+ * - cycle prevention when new parent is under active subtree
+ */
+export function planTreeDrop(
+  nodes: PublicNode[],
+  activeId: string,
+  overId: string,
+  position: TreeDropPosition,
+): TreeDropPlan {
+  const active = nodes.find((n) => n.id === activeId);
+  const over = nodes.find((n) => n.id === overId);
+  if (!active || !over) {
+    return { ok: false, reason: 'not_found', message: '节点不存在' };
+  }
+  if (activeId === overId) {
+    return { ok: false, reason: 'same_node', message: '不能拖到自身' };
+  }
+
+  let parentId: string | null;
+  let insertIndex: number;
+
+  if (position === 'inside' && over.type === 'folder') {
+    parentId = over.id;
+    insertIndex = siblingsUnder(nodes, parentId, activeId).length;
+  } else if (position === 'inside' && over.type === 'doc') {
+    // Drop onto a document → become sibling after it (not child)
+    parentId = over.parentId;
+    const fullSibs = siblingsUnder(nodes, parentId);
+    const oi = fullSibs.findIndex((n) => n.id === overId);
+    const raw = oi < 0 ? fullSibs.length : oi + 1;
+    insertIndex = insertIndexExcludingActive(fullSibs, raw, activeId);
+  } else {
+    // before / after (or inside coerced above)
+    parentId = over.parentId;
+    const fullSibs = siblingsUnder(nodes, parentId);
+    const oi = fullSibs.findIndex((n) => n.id === overId);
+    if (oi < 0) {
+      return { ok: false, reason: 'not_found', message: '目标节点不存在' };
+    }
+    const raw = position === 'before' ? oi : oi + 1;
+    insertIndex = insertIndexExcludingActive(fullSibs, raw, activeId);
+  }
+
+  // Cycle: new parent must not be under active (or equal)
+  if (parentId != null && isAncestorOf(nodes, activeId, parentId)) {
+    return {
+      ok: false,
+      reason: 'cycle',
+      message: '不能移动到自己的子树内',
+    };
+  }
+
+  const targetSiblings = siblingsUnder(nodes, parentId, activeId);
+  const sortOrder = sortOrderAtIndex(targetSiblings, insertIndex);
+
+  // No-op: same parent and same visual index among siblings
+  if (active.parentId === parentId) {
+    const currentSibs = siblingsUnder(nodes, parentId);
+    const curIdx = currentSibs.findIndex((n) => n.id === activeId);
+    if (curIdx >= 0 && insertIndex === curIdx) {
+      return { ok: false, reason: 'noop', message: '位置未变化' };
+    }
+  }
+
+  return {
+    ok: true,
+    nodeId: activeId,
+    parentId,
+    sortOrder,
+  };
+}
+
+/**
+ * Infer drop position from pointer Y relative to the over element rect.
+ * Top 25% → before, bottom 25% → after, middle → inside (folder) or after (doc).
+ */
+export function inferDropPosition(
+  overType: 'folder' | 'doc',
+  clientY: number,
+  rect: { top: number; height: number },
+): TreeDropPosition {
+  const ratio = rect.height <= 0 ? 0.5 : (clientY - rect.top) / rect.height;
+  if (ratio < 0.25) return 'before';
+  if (ratio > 0.75) return 'after';
+  if (overType === 'folder') return 'inside';
+  return 'after';
+}

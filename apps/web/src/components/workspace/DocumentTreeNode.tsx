@@ -1,12 +1,16 @@
+import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import {
   ChevronDown,
   ChevronRight,
   FileText,
   Folder,
   FolderOpen,
+  GripVertical,
   MoreHorizontal,
 } from 'lucide-react';
 import type { PublicNode } from '../../api/types';
+import type { TreeDropPosition } from '../../ui/treeOps';
 
 export type TreeNodeMenuAction =
   | 'new-doc'
@@ -29,6 +33,7 @@ type Props = {
   canWrite: boolean;
   canUp: boolean;
   canDown: boolean;
+  dropHint?: TreeDropPosition | null;
   onSelect: () => void;
   onToggleCollapse: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -54,6 +59,7 @@ export function DocumentTreeNode({
   canWrite,
   canUp,
   canDown,
+  dropHint,
   onSelect,
   onToggleCollapse,
   onContextMenu,
@@ -70,12 +76,66 @@ export function DocumentTreeNode({
   const isFolder = node.type === 'folder';
   const showTwistie = isFolder || hasKids;
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: node.id,
+    disabled: !canWrite || renaming,
+    data: { node },
+  });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: node.id,
+    disabled: !canWrite,
+    data: { node },
+  });
+
+  function setRowRef(el: HTMLDivElement | null) {
+    setDragRef(el);
+    setDropRef(el);
+  }
+
+  const style = transform
+    ? { transform: CSS.Translate.toString(transform) }
+    : undefined;
+
   return (
     <li>
       <div
-        className={`ws-tree-row${selected ? ' is-selected' : ''}${menuOpen ? ' menu-open' : ''}`}
+        ref={setRowRef}
+        style={style}
+        className={[
+          'ws-tree-row',
+          selected ? 'is-selected' : '',
+          menuOpen ? 'menu-open' : '',
+          isDragging ? 'is-dragging' : '',
+          isOver && dropHint ? `drop-${dropHint}` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         onContextMenu={onContextMenu}
+        data-node-id={node.id}
       >
+        {canWrite && !renaming ? (
+          <button
+            type="button"
+            className="ws-tree-grip"
+            aria-label={`拖拽 ${node.title}`}
+            title="拖拽移动"
+            {...listeners}
+            {...attributes}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical size={14} />
+          </button>
+        ) : (
+          <span className="ws-tree-grip-spacer" aria-hidden />
+        )}
+
         {showTwistie ? (
           <button
             type="button"

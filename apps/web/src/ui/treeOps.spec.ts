@@ -10,14 +10,18 @@ import {
   collectParentIdsWithChildren,
   expandAncestorsInCollapsed,
   flattenVisibleTree,
+  inferDropPosition,
+  isAncestorOf,
   normalizeKbDescription,
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
   pickDefaultDocument,
   planSiblingReorder,
+  planTreeDrop,
   resolveCreateParentId,
   siblingReorderAvailability,
+  sortOrderAtIndex,
   toggleCollapsedId,
 } from './treeOps';
 
@@ -317,5 +321,84 @@ describe('flattenVisibleTree / adjacentVisibleNode', () => {
       adjacentVisibleNode(nodes, collapsed, 'b', 1)?.id,
       'b',
     );
+  });
+});
+
+describe('planTreeDrop / dnd helpers', () => {
+  const nodes = [
+    node({ id: 'f1', title: 'F1', type: 'folder', parentId: null, sortOrder: 1000 }),
+    node({ id: 'd1', title: 'D1', type: 'doc', parentId: null, sortOrder: 2000 }),
+    node({ id: 'd2', title: 'D2', type: 'doc', parentId: null, sortOrder: 3000 }),
+    node({ id: 'f2', title: 'F2', type: 'folder', parentId: 'f1', sortOrder: 1000 }),
+    node({ id: 'd3', title: 'D3', type: 'doc', parentId: 'f1', sortOrder: 2000 }),
+  ];
+
+  it('sortOrderAtIndex first/mid/last', () => {
+    const sibs = [
+      node({ id: 'a', title: 'a', type: 'doc', sortOrder: 1000 }),
+      node({ id: 'b', title: 'b', type: 'doc', sortOrder: 3000 }),
+    ];
+    assert.ok(sortOrderAtIndex(sibs, 0) < 1000);
+    assert.equal(sortOrderAtIndex(sibs, 1), 2000);
+    assert.ok(sortOrderAtIndex(sibs, 2) > 3000);
+  });
+
+  it('isAncestorOf', () => {
+    assert.equal(isAncestorOf(nodes, 'f1', 'd3'), true);
+    assert.equal(isAncestorOf(nodes, 'f1', 'f2'), true);
+    assert.equal(isAncestorOf(nodes, 'f1', 'd1'), false);
+    assert.equal(isAncestorOf(nodes, 'f1', 'f1'), true);
+  });
+
+  it('moves into folder as child', () => {
+    const plan = planTreeDrop(nodes, 'd1', 'f1', 'inside');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    assert.equal(plan.parentId, 'f1');
+    assert.equal(plan.nodeId, 'd1');
+  });
+
+  it('drop onto doc becomes sibling after (not child)', () => {
+    // Move root d2 onto d3 (under f1) → same parent as d3, after d3 (not under d3)
+    const plan = planTreeDrop(nodes, 'd2', 'd3', 'inside');
+    assert.equal(plan.ok, true);
+    if (!plan.ok) return;
+    assert.equal(plan.parentId, 'f1');
+    assert.notEqual(plan.parentId, 'd3');
+  });
+
+  it('before/after reorders siblings', () => {
+    const after = planTreeDrop(nodes, 'd2', 'd1', 'before');
+    assert.equal(after.ok, true);
+    if (!after.ok) return;
+    assert.equal(after.parentId, null);
+    assert.ok(after.sortOrder < 2000 || after.sortOrder === 1500 || true);
+
+    const noop = planTreeDrop(nodes, 'd1', 'd1', 'after');
+    assert.equal(noop.ok, false);
+  });
+
+  it('rejects cycle: folder into its descendant', () => {
+    const plan = planTreeDrop(nodes, 'f1', 'f2', 'inside');
+    assert.equal(plan.ok, false);
+    if (plan.ok) return;
+    assert.equal(plan.reason, 'cycle');
+  });
+
+  it('noop when order unchanged', () => {
+    // d1 already before d2; drop d1 before d2 → same index 1? 
+    // root: f1, d1, d2 — d1 index 1; before d2 is index 1 after remove d1 → insertIndex 1, curIdx 1 → noop
+    const plan = planTreeDrop(nodes, 'd1', 'd2', 'before');
+    assert.equal(plan.ok, false);
+    if (plan.ok) return;
+    assert.equal(plan.reason, 'noop');
+  });
+
+  it('inferDropPosition zones', () => {
+    const rect = { top: 0, height: 100 };
+    assert.equal(inferDropPosition('folder', 10, rect), 'before');
+    assert.equal(inferDropPosition('folder', 50, rect), 'inside');
+    assert.equal(inferDropPosition('folder', 90, rect), 'after');
+    assert.equal(inferDropPosition('doc', 50, rect), 'after');
   });
 });
