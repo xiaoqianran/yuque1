@@ -12,6 +12,19 @@ import type {
 import { MembersPanel } from '../components/MembersPanel';
 import { StatePanel } from '../components/StatePanel';
 import {
+  AUTOSAVE_DEBOUNCE_MS,
+  canAutosave,
+  isDirty,
+} from '../ui/autosave';
+import { MarkdownView } from '../ui/markdown';
+import {
+  expiresAtFromPreset,
+  formatShareExpiry,
+  isShareExpired,
+  SHARE_EXPIRY_OPTIONS,
+  type ShareExpiryPreset,
+} from '../ui/shareExpiry';
+import {
   buildMoveParentOptions,
   normalizeKbDescription,
   normalizeKbName,
@@ -21,14 +34,6 @@ import {
   siblingReorderAvailability,
   type SiblingReorderDirection,
 } from '../ui/treeOps';
-import { MarkdownView } from '../ui/markdown';
-import {
-  expiresAtFromPreset,
-  formatShareExpiry,
-  isShareExpired,
-  SHARE_EXPIRY_OPTIONS,
-  type ShareExpiryPreset,
-} from '../ui/shareExpiry';
 import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
 import { resolveViewPhase } from '../ui/viewState';
 
@@ -122,12 +127,16 @@ export function KbWorkspacePage() {
   const [revisionPreview, setRevisionPreview] = useState<ContentRevision | null>(
     null,
   );
+  const [lastSavedBody, setLastSavedBody] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
     () => (selected ? buildMoveParentOptions(nodes, selected.id) : []),
     [nodes, selected],
   );
+  const canWrite = kb != null && kb.role !== 'reader';
+  const dirty = isDirty(body, lastSavedBody);
   const reorderAvail = useMemo(
     () =>
       selected
@@ -173,6 +182,8 @@ export function KbWorkspacePage() {
     setRevisionsOpen(false);
     setRevisionPreview(null);
     setEditorMode('edit');
+    setLastSavedBody(null);
+    setSaving(false);
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -183,6 +194,7 @@ export function KbWorkspacePage() {
       const c = await contentApi.get(n.id);
       setBody(c.bodyMd);
       setVersion(c.version);
+      setLastSavedBody(c.bodyMd);
       const s = await shareApi.get(n.id);
       setShare(s);
     } catch (e) {
@@ -209,32 +221,75 @@ export function KbWorkspacePage() {
     }
   }
 
-  async function save() {
-    if (!selected || selected.type !== 'doc' || version == null) return;
-    setStatus('保存中…');
-    setConflict(null);
-    try {
-      const meta = await contentApi.put(selected.id, version, body);
-      setVersion(meta.version);
-      setStatus(`已保存 v${meta.version}`);
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'DOC_VERSION_CONFLICT') {
-        const serverVersion = Number(
-          (e.details as { serverVersion?: number } | null)?.serverVersion ?? 0,
-        );
-        setConflict({ serverVersion });
-        setStatus('版本冲突：请选择处理方式');
-      } else {
-        setStatus(e instanceof ApiError ? e.message : '保存失败');
+  const save = useCallback(
+    async (opts?: { auto?: boolean }) => {
+      const auto = opts?.auto === true;
+      if (!selected || selected.type !== 'doc' || version == null) return;
+      if (!canWrite) return;
+      if (conflict && auto) return;
+
+      setSaving(true);
+      if (!auto) setConflict(null);
+      setStatus(auto ? '自动保存中…' : '保存中…');
+      try {
+        const meta = await contentApi.put(selected.id, version, body);
+        setVersion(meta.version);
+        setLastSavedBody(body);
+        setStatus(auto ? `已自动保存 v${meta.version}` : `已保存 v${meta.version}`);
+        setConflict(null);
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'DOC_VERSION_CONFLICT') {
+          const serverVersion = Number(
+            (e.details as { serverVersion?: number } | null)?.serverVersion ?? 0,
+          );
+          setConflict({ serverVersion });
+          setStatus('版本冲突：请选择处理方式（已暂停自动保存）');
+        } else {
+          setStatus(e instanceof ApiError ? e.message : '保存失败');
+        }
+      } finally {
+        setSaving(false);
       }
-    }
-  }
+    },
+    [selected, version, body, canWrite, conflict],
+  );
+
+  // Debounced autosave; paused while conflict is open (PRD).
+  useEffect(() => {
+    if (docLoading) return;
+    const gate = canAutosave({
+      hasDoc: selected?.type === 'doc',
+      version,
+      body,
+      lastSavedBody,
+      hasConflict: conflict != null,
+      isSaving: saving,
+      canWrite,
+    });
+    if (!gate.allow) return;
+    const t = window.setTimeout(() => {
+      void save({ auto: true });
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [
+    body,
+    version,
+    lastSavedBody,
+    conflict,
+    saving,
+    selected?.type,
+    selected?.id,
+    docLoading,
+    canWrite,
+    save,
+  ]);
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
     const c = await contentApi.get(selected.id);
     setBody(c.bodyMd);
     setVersion(c.version);
+    setLastSavedBody(c.bodyMd);
     setConflict(null);
     setStatus(`已加载服务器 v${c.version}`);
   }
@@ -243,6 +298,7 @@ export function KbWorkspacePage() {
     if (!selected || !conflict) return;
     const meta = await contentApi.overwrite(selected.id, conflict.serverVersion, body);
     setVersion(meta.version);
+    setLastSavedBody(body);
     setConflict(null);
     setStatus(`已覆盖保存 v${meta.version}`);
     if (revisionsOpen) {
@@ -751,6 +807,12 @@ export function KbWorkspacePage() {
               <h2>{selected.title}</h2>
               <div className="row">
                 <span className="badge">v{version ?? '—'}</span>
+                {dirty && !conflict && (
+                  <span className="badge badge-warn" title="本地有未同步修改">
+                    未保存
+                  </span>
+                )}
+                {saving && <span className="muted">自动保存中…</span>}
                 <div className="seg-control" role="group" aria-label="编辑模式">
                   <button
                     type="button"
@@ -769,7 +831,12 @@ export function KbWorkspacePage() {
                     预览
                   </button>
                 </div>
-                <button type="button" className="btn primary small" onClick={() => void save()}>
+                <button
+                  type="button"
+                  className="btn primary small"
+                  disabled={!canWrite || saving || version == null}
+                  onClick={() => void save({ auto: false })}
+                >
                   保存
                 </button>
                 <label className="share-expiry-inline">
@@ -963,6 +1030,7 @@ export function KbWorkspacePage() {
                 placeholder="在此编写 Markdown 正文…"
                 spellCheck={false}
                 aria-label="文档正文"
+                readOnly={!canWrite}
               />
             ) : (
               <MarkdownView
