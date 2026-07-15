@@ -7,8 +7,10 @@ type Props = {
   loading?: boolean;
   canWrite: boolean;
   restoringId: string | null;
+  purgingId?: string | null;
   onClose: () => void;
   onRestore: (nodeId: string, title: string) => void;
+  onPurgeRequest?: (node: PublicNode) => void;
 };
 
 export function TrashDrawer({
@@ -17,8 +19,10 @@ export function TrashDrawer({
   loading,
   canWrite,
   restoringId,
+  purgingId,
   onClose,
   onRestore,
+  onPurgeRequest,
 }: Props) {
   if (!open) return null;
   return (
@@ -37,6 +41,9 @@ export function TrashDrawer({
           </button>
         </div>
         <div className="ws-drawer-body">
+          <p className="hint">
+            已删除的节点可恢复到原位置；永久删除不可撤销。
+          </p>
           {loading ? (
             <p className="hint">加载中…</p>
           ) : items.length === 0 ? (
@@ -45,7 +52,7 @@ export function TrashDrawer({
             <ul className="ws-trash-list">
               {items.map((n) => (
                 <li key={n.id} className="ws-trash-item">
-                  <div className="row" style={{ gap: 6, minWidth: 0 }}>
+                  <div className="row" style={{ gap: 6, minWidth: 0, flex: 1 }}>
                     {n.type === 'folder' ? (
                       <Folder size={14} aria-hidden />
                     ) : (
@@ -56,14 +63,30 @@ export function TrashDrawer({
                     </span>
                   </div>
                   {canWrite && (
-                    <button
-                      type="button"
-                      className="ws-btn"
-                      disabled={restoringId === n.id}
-                      onClick={() => onRestore(n.id, n.title)}
-                    >
-                      {restoringId === n.id ? '…' : '恢复'}
-                    </button>
+                    <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        className="ws-btn"
+                        disabled={
+                          restoringId === n.id || purgingId === n.id
+                        }
+                        onClick={() => onRestore(n.id, n.title)}
+                      >
+                        {restoringId === n.id ? '…' : '恢复'}
+                      </button>
+                      {onPurgeRequest && (
+                        <button
+                          type="button"
+                          className="ws-btn ws-btn--danger"
+                          disabled={
+                            restoringId === n.id || purgingId === n.id
+                          }
+                          onClick={() => onPurgeRequest(n)}
+                        >
+                          {purgingId === n.id ? '…' : '永久删除'}
+                        </button>
+                      )}
+                    </div>
                   )}
                 </li>
               ))}

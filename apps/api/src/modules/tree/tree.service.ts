@@ -378,6 +378,61 @@ export class TreeService {
   }
 
   /**
+   * Permanently delete a soft-deleted node (hard delete).
+   * Refuses if any children still reference this node (live or soft-deleted).
+   * Cascades document content, revisions, and share links.
+   */
+  async purge(
+    userId: string,
+    nodeId: string,
+  ): Promise<ServiceResult<null>> {
+    const node = await this.prisma.treeNode.findFirst({
+      where: { id: nodeId, deletedAt: { not: null } },
+    });
+    if (!node) return this.notFound();
+
+    const m = await this.membership(node.knowledgeBaseId, userId);
+    if (!m) return this.notFound();
+    if (!this.canWrite(m.role)) return this.notFound();
+
+    const childCount = await this.prisma.treeNode.count({
+      where: { parentId: nodeId },
+    });
+    if (childCount > 0) {
+      return {
+        ok: false,
+        code: 'NODE_HAS_CHILDREN',
+        message: '仍有子节点引用该节点，请先永久删除或恢复子节点',
+        http: 409,
+        details: { childCount },
+      };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.shareLink.deleteMany({ where: { nodeId } });
+      await tx.contentRevision.deleteMany({ where: { nodeId } });
+      await tx.documentContent.deleteMany({ where: { nodeId } });
+      await tx.treeNode.delete({ where: { id: nodeId } });
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          actorUserId: userId,
+          action: 'node.purge',
+          resourceType: 'node',
+          resourceId: nodeId,
+          metadata: {
+            knowledgeBaseId: node.knowledgeBaseId,
+            title: node.title,
+            type: node.type,
+          },
+        },
+      });
+    });
+
+    return { ok: true, data: null };
+  }
+
+  /**
    * 若 newParent 是 node 的后代（或自身），则成环。
    */
   private async wouldCreateCycle(

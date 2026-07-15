@@ -164,6 +164,19 @@ export class TreeController {
     return ok(result.data);
   }
 
+  @Delete('nodes/:nodeId/permanent')
+  async purge(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('nodeId') nodeId: string,
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.tree.purge(userId, nodeId);
+    if (!result.ok) return this.failResult(res, result);
+    return ok(null);
+  }
+
   @Post('nodes/:nodeId/move')
   async move(
     @Req() req: Request,

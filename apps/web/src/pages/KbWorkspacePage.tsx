@@ -491,8 +491,10 @@ export function KbWorkspacePage() {
         loading={ws.trashLoading}
         canWrite={ws.canWrite}
         restoringId={ws.restoringId}
+        purgingId={ws.purgingId}
         onClose={() => ws.setTrashOpen(false)}
         onRestore={(id, title) => void ws.restoreTrashItem(id, title)}
+        onPurgeRequest={(node) => ws.setPurgeTarget(node)}
       />
 
       <MoveNodeDialog
@@ -512,6 +514,16 @@ export function KbWorkspacePage() {
         busy={ws.deleteBusy}
         onCancel={() => ws.setDeleteTarget(null)}
         onConfirm={() => void ws.confirmDelete()}
+      />
+
+      <DeleteConfirmDialog
+        open={ws.purgeTarget != null}
+        title="永久删除"
+        message={ws.purgeMessage}
+        confirmLabel="永久删除"
+        busy={ws.purgeBusy}
+        onCancel={() => ws.setPurgeTarget(null)}
+        onConfirm={() => void ws.confirmPurge()}
       />
     </WorkspaceShell>
   );
