@@ -184,3 +184,13 @@ export function toggleCollapsedId(
   else next.add(nodeId);
   return next;
 }
+
+/** Ids of nodes that currently have at least one child (collapsible). */
+export function collectParentIdsWithChildren(nodes: PublicNode[]): string[] {
+  const counts = new Map<string, number>();
+  for (const n of nodes) {
+    if (!n.parentId) continue;
+    counts.set(n.parentId, (counts.get(n.parentId) ?? 0) + 1);
+  }
+  return [...counts.keys()];
+}
