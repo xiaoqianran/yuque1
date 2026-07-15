@@ -75,6 +75,19 @@ export class TreeController {
     return ok(result.data);
   }
 
+  @Post('kbs/:kbId/trash/empty')
+  async emptyTrash(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('kbId') kbId: string,
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.tree.emptyTrash(userId, kbId);
+    if (!result.ok) return this.failResult(res, result);
+    return ok(result.data);
+  }
+
   @Get('kbs/:kbId/nodes')
   async search(
     @Req() req: Request,

@@ -4,6 +4,7 @@ import {
   buildPublicShareUrl,
   confirmDeleteKbMessage,
   confirmDeleteNodeMessage,
+  confirmEmptyTrashMessage,
   confirmPurgeNodeMessage,
 } from './urls';
 
@@ -49,6 +50,13 @@ describe('confirm delete messages', () => {
     const m = confirmPurgeNodeMessage('废稿', 'doc');
     assert.match(m, /废稿/);
     assert.match(m, /永久/);
+    assert.match(m, /不可恢复/);
+  });
+
+  it('empty trash message includes count', () => {
+    const m = confirmEmptyTrashMessage(3);
+    assert.match(m, /3/);
+    assert.match(m, /清空回收站/);
     assert.match(m, /不可恢复/);
   });
 

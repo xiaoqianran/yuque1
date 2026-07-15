@@ -27,6 +27,11 @@ export function confirmPurgeNodeMessage(title: string, type: 'folder' | 'doc'): 
   return `确定永久删除${kind}「${title}」吗？\n\n将从回收站彻底移除正文、历史快照与分享链接，不可恢复。\n若仍有子节点（含已删除子节点）会失败。`;
 }
 
+export function confirmEmptyTrashMessage(itemCount: number): string {
+  const n = Math.max(0, itemCount);
+  return `确定清空回收站吗？\n\n将永久删除当前列表中的 ${n} 个节点（含子树将按层级全部清除），不可恢复。`;
+}
+
 export function confirmDeleteKbMessage(name: string): string {
   return `确定删除知识库「${name}」吗？\n\n将软删库内文档并禁用分享，不可撤销。`;
 }

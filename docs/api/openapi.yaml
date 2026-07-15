@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.11
+  version: 0.1.12
   contact:
     name: yuque1
 
@@ -585,6 +585,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelopeTree'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /kbs/{kbId}/trash/empty:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Tree]
+      summary: 清空回收站（批量永久删除）
+      description: |
+        仅 owner/editor。反复硬删「无子节点引用」的软删节点，直到清空。
+        返回 `data.purgedCount`。审计 `kb.trash.empty` 与每条 `node.purge`。
+      operationId: emptyKbTrash
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeTrashEmpty'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1450,6 +1472,22 @@ components:
       properties:
         success: { type: boolean, enum: [true] }
         data: { nullable: true }
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeTrashEmpty:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [purgedCount]
+          properties:
+            purgedCount:
+              type: integer
+              minimum: 0
+              description: 本次永久删除的节点数
         error: { nullable: true }
         requestId: { type: string }
 

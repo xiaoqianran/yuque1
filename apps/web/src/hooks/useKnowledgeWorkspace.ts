@@ -21,6 +21,7 @@ import {
 import { duplicateTitle } from '../ui/duplicateDoc';
 import {
   confirmDeleteNodeMessage,
+  confirmEmptyTrashMessage,
   confirmPurgeNodeMessage,
 } from '../ui/urls';
 import { useDocumentAutosave } from './useDocumentAutosave';
@@ -62,6 +63,8 @@ export function useKnowledgeWorkspace(kbId: string) {
   const [purgeTarget, setPurgeTarget] = useState<PublicNode | null>(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
   const [purgingId, setPurgingId] = useState<string | null>(null);
+  const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
+  const [emptyingTrash, setEmptyingTrash] = useState(false);
   const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -501,6 +504,25 @@ export function useKnowledgeWorkspace(kbId: string) {
     }
   }, [purgeTarget, canWrite, loadTrash]);
 
+  const confirmEmptyTrash = useCallback(async () => {
+    if (!canWrite) return;
+    setEmptyingTrash(true);
+    try {
+      const r = await treeApi.emptyTrash(kbId);
+      setStatus(
+        r.purgedCount > 0
+          ? `已清空回收站（永久删除 ${r.purgedCount} 项）`
+          : '回收站已为空',
+      );
+      setEmptyTrashConfirm(false);
+      await loadTrash();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '清空回收站失败');
+    } finally {
+      setEmptyingTrash(false);
+    }
+  }, [canWrite, kbId, loadTrash]);
+
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) {
@@ -640,6 +662,11 @@ export function useKnowledgeWorkspace(kbId: string) {
     return confirmPurgeNodeMessage(purgeTarget.title, purgeTarget.type);
   }, [purgeTarget]);
 
+  const emptyTrashMessage = useMemo(
+    () => confirmEmptyTrashMessage(trashItems.length),
+    [trashItems.length],
+  );
+
   const expandAll = useCallback(() => setCollapsedIds(new Set()), [setCollapsedIds]);
   const collapseAll = useCallback(() => {
     setCollapsedIds(new Set(collectParentIdsWithChildren(nodes)));
@@ -737,6 +764,11 @@ export function useKnowledgeWorkspace(kbId: string) {
     purgingId,
     purgeMessage,
     confirmPurge,
+    emptyTrashConfirm,
+    setEmptyTrashConfirm,
+    emptyingTrash,
+    emptyTrashMessage,
+    confirmEmptyTrash,
     saveKbMeta,
     kbSaving,
     enableShare,

@@ -446,4 +446,43 @@ describe('TreeService', () => {
     if (r.ok) return;
     assert.equal(r.http, 404);
   });
+
+  it('emptyTrash purges soft-deleted tree leaf-first', async () => {
+    const folder = await svc.create('u1', 'kb1', { type: 'folder', title: 'F' });
+    assert.equal(folder.ok, true);
+    if (!folder.ok) return;
+    const child = await svc.create('u1', 'kb1', {
+      type: 'doc',
+      title: 'C',
+      parentId: folder.data.id,
+    });
+    assert.equal(child.ok, true);
+    if (!child.ok) return;
+    const other = await svc.create('u1', 'kb1', { type: 'doc', title: 'Solo' });
+    assert.equal(other.ok, true);
+    if (!other.ok) return;
+
+    await svc.delete('u1', child.data.id);
+    await svc.delete('u1', folder.data.id);
+    await svc.delete('u1', other.data.id);
+    assert.equal(store.nodes.filter((n) => n.deletedAt).length, 3);
+
+    const emptied = await svc.emptyTrash('u1', 'kb1');
+    assert.equal(emptied.ok, true);
+    if (!emptied.ok) return;
+    assert.equal(emptied.data.purgedCount, 3);
+    assert.equal(store.nodes.length, 0);
+    assert.ok(
+      store.audits.some(
+        (a) => (a as { action?: string }).action === 'kb.trash.empty',
+      ),
+    );
+  });
+
+  it('emptyTrash is no-op when trash empty', async () => {
+    const r = await svc.emptyTrash('u1', 'kb1');
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.data.purgedCount, 0);
+  });
 });
