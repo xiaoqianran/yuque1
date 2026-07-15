@@ -11,12 +11,16 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app">
       <header className="header">
-        <Link to="/" className="logo">
+        <Link to="/" className="logo" aria-label="yuque1 首页">
           yuque1
         </Link>
-        <span className="badge">联调</span>
+        <span className="badge">知识库</span>
         <span className="header-spacer" />
-        {user && <span className="muted header-user">{user.nickname}</span>}
+        {user && (
+          <span className="header-user" title={user.mobileE164}>
+            {user.nickname}
+          </span>
+        )}
       </header>
       <main className="main-fluid">{children}</main>
     </div>
