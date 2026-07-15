@@ -1,0 +1,33 @@
+/* Workspace design tokens — content-first knowledge product */
+
+:root {
+  --workspace-bg: #ffffff;
+  --sidebar-bg: #f7f8fa;
+  --ws-border: #e8e9eb;
+  --ws-text-primary: #262626;
+  --ws-text-secondary: #8c8c8c;
+  --ws-hover-bg: #f0f1f3;
+  --ws-active-bg: #e8f3ff;
+  --ws-primary: #1677ff;
+  --ws-danger: #ff4d4f;
+  --ws-radius: 6px;
+  --ws-radius-sm: 4px;
+  --ws-header-h: 58px;
+  --ws-sidebar-w: 272px;
+  --ws-outline-w: 220px;
+  --ws-editor-max: 820px;
+  --ws-font-body:
+    system-ui,
+    -apple-system,
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Segoe UI',
+    sans-serif;
+  --ws-font-mono:
+    'SFMono-Regular',
+    Consolas,
+    'Liberation Mono',
+    Menlo,
+    monospace;
+  --ws-click-min: 32px;
+}

@@ -4,6 +4,11 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthContext';
 import './styles.css';
+import './styles/tokens.css';
+import './styles/workspace.css';
+import './styles/document-tree.css';
+import './styles/editor.css';
+import './styles/dialogs.css';
 
 const root = document.getElementById('root');
 if (!root) {

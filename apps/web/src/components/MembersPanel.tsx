@@ -3,12 +3,18 @@ import { membersApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { KbMember, PublicKb } from '../api/types';
 import { roleLabel } from '../ui/viewState';
+import { DeleteConfirmDialog } from './workspace/DeleteConfirmDialog';
 
 type Props = {
   kb: PublicKb;
   /** Called after ownership transfer so parent can refresh kb.role */
   onOwnershipTransferred?: () => void;
 };
+
+type ConfirmState =
+  | { kind: 'remove'; userId: string; nickname: string }
+  | { kind: 'transfer'; userId: string; nickname: string }
+  | null;
 
 export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
   const [items, setItems] = useState<KbMember[]>([]);
@@ -17,6 +23,7 @@ export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
   const [mobile, setMobile] = useState('');
   const [role, setRole] = useState<'editor' | 'reader'>('editor');
   const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmState>(null);
 
   const isOwner = kb.role === 'owner';
 
@@ -64,35 +71,28 @@ export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
     }
   }
 
-  async function onRemove(userId: string, nickname: string) {
-    if (!isOwner) return;
-    if (!window.confirm(`确定移除成员「${nickname}」吗？`)) return;
-    setError(null);
-    try {
-      await membersApi.remove(kb.id, userId);
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : '移除失败');
-    }
-  }
-
-  async function onTransfer(userId: string, nickname: string) {
-    if (!isOwner) return;
-    if (
-      !window.confirm(
-        `确定将 owner 转让给「${nickname}」吗？\n\n转让后你将成为可编辑成员，对方成为唯一 owner。`,
-      )
-    ) {
-      return;
-    }
-    setError(null);
+  async function runConfirm() {
+    if (!confirm || !isOwner) return;
     setBusy(true);
+    setError(null);
     try {
-      await membersApi.transferOwner(kb.id, userId);
-      await load();
-      onOwnershipTransferred?.();
+      if (confirm.kind === 'remove') {
+        await membersApi.remove(kb.id, confirm.userId);
+        await load();
+      } else {
+        await membersApi.transferOwner(kb.id, confirm.userId);
+        await load();
+        onOwnershipTransferred?.();
+      }
+      setConfirm(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '转让失败');
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : confirm.kind === 'remove'
+            ? '移除失败'
+            : '转让失败',
+      );
     } finally {
       setBusy(false);
     }
@@ -122,7 +122,10 @@ export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
                     value={m.role}
                     aria-label={`${m.nickname} 角色`}
                     onChange={(e) =>
-                      void onRoleChange(m.userId, e.target.value as 'editor' | 'reader')
+                      void onRoleChange(
+                        m.userId,
+                        e.target.value as 'editor' | 'reader',
+                      )
                     }
                   >
                     <option value="editor">可编辑</option>
@@ -132,7 +135,13 @@ export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
                     type="button"
                     className="btn secondary small"
                     disabled={busy}
-                    onClick={() => void onTransfer(m.userId, m.nickname)}
+                    onClick={() =>
+                      setConfirm({
+                        kind: 'transfer',
+                        userId: m.userId,
+                        nickname: m.nickname,
+                      })
+                    }
                   >
                     转让 owner
                   </button>
@@ -140,7 +149,13 @@ export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
                     type="button"
                     className="btn secondary small danger-outline"
                     disabled={busy}
-                    onClick={() => void onRemove(m.userId, m.nickname)}
+                    onClick={() =>
+                      setConfirm({
+                        kind: 'remove',
+                        userId: m.userId,
+                        nickname: m.nickname,
+                      })
+                    }
                   >
                     移除
                   </button>
@@ -171,12 +186,32 @@ export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
               <option value="editor">可编辑</option>
               <option value="reader">只读</option>
             </select>
-            <button type="submit" className="btn primary small" disabled={busy || !mobile.trim()}>
+            <button
+              type="submit"
+              className="btn primary small"
+              disabled={busy || !mobile.trim()}
+            >
               {busy ? '处理中…' : '添加'}
             </button>
           </div>
         </form>
       )}
+
+      <DeleteConfirmDialog
+        open={confirm != null}
+        title={confirm?.kind === 'transfer' ? '转让所有者' : '移除成员'}
+        message={
+          confirm?.kind === 'transfer'
+            ? `确定将 owner 转让给「${confirm.nickname}」吗？\n\n转让后你将成为可编辑成员，对方成为唯一 owner。`
+            : confirm
+              ? `确定移除成员「${confirm.nickname}」吗？`
+              : ''
+        }
+        confirmLabel={confirm?.kind === 'transfer' ? '确认转让' : '移除'}
+        busy={busy}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void runConfirm()}
+      />
     </div>
   );
 }
