@@ -61,3 +61,88 @@ export function normalizeKbDescription(
   const t = raw.trim();
   return { ok: true, description: t || null };
 }
+
+/** Same ordering as the workspace tree (sortOrder, then title). */
+export function compareSiblingOrder(a: PublicNode, b: PublicNode): number {
+  return a.sortOrder - b.sortOrder || a.title.localeCompare(b.title);
+}
+
+export type SiblingReorderDirection = 'up' | 'down';
+
+export type SiblingReorderPlan =
+  | {
+      ok: true;
+      /** Two move calls: swap sortOrder under the same parent. */
+      moves: [
+        { id: string; parentId: string | null; sortOrder: number },
+        { id: string; parentId: string | null; sortOrder: number },
+      ];
+    }
+  | {
+      ok: false;
+      reason: 'not_found' | 'already_first' | 'already_last' | 'no_siblings';
+      message: string;
+    };
+
+/**
+ * Plan swapping sortOrder with the adjacent sibling (up = earlier in list).
+ * Does not mutate; caller applies via POST /nodes/{id}/move.
+ */
+export function planSiblingReorder(
+  nodes: PublicNode[],
+  nodeId: string,
+  direction: SiblingReorderDirection,
+): SiblingReorderPlan {
+  const self = nodes.find((n) => n.id === nodeId);
+  if (!self) {
+    return { ok: false, reason: 'not_found', message: '节点不存在' };
+  }
+  const siblings = nodes
+    .filter((n) => n.parentId === self.parentId)
+    .slice()
+    .sort(compareSiblingOrder);
+  if (siblings.length < 2) {
+    return {
+      ok: false,
+      reason: 'no_siblings',
+      message: '没有可调整顺序的同级节点',
+    };
+  }
+  const idx = siblings.findIndex((n) => n.id === nodeId);
+  if (idx < 0) {
+    return { ok: false, reason: 'not_found', message: '节点不存在' };
+  }
+  if (direction === 'up' && idx === 0) {
+    return { ok: false, reason: 'already_first', message: '已在同级最前' };
+  }
+  if (direction === 'down' && idx === siblings.length - 1) {
+    return { ok: false, reason: 'already_last', message: '已在同级最后' };
+  }
+  const neighbor = siblings[direction === 'up' ? idx - 1 : idx + 1]!;
+  return {
+    ok: true,
+    moves: [
+      {
+        id: self.id,
+        parentId: self.parentId,
+        sortOrder: neighbor.sortOrder,
+      },
+      {
+        id: neighbor.id,
+        parentId: neighbor.parentId,
+        sortOrder: self.sortOrder,
+      },
+    ],
+  };
+}
+
+/** Whether the node can move up/down among siblings (for button disabled). */
+export function siblingReorderAvailability(
+  nodes: PublicNode[],
+  nodeId: string,
+): { canUp: boolean; canDown: boolean } {
+  return {
+    canUp: planSiblingReorder(nodes, nodeId, 'up').ok,
+    canDown: planSiblingReorder(nodes, nodeId, 'down').ok,
+  };
+}

@@ -169,6 +169,47 @@ async function main() {
   if (!nodeId) throw new Error(`create node: no id: ${JSON.stringify(r.json)}`);
   console.log(`    doc created id=${nodeId}`);
 
+  // 3b) Second sibling + reorder via sortOrder swap
+  r = await a.req('POST', `/kbs/${kbId}/nodes`, {
+    type: 'doc',
+    title: `${docTitle}-b`,
+    parentId: null,
+  });
+  if (r.status !== 200 && r.status !== 201) {
+    throw new Error(`create node b: HTTP ${r.status}: ${JSON.stringify(r.json)}`);
+  }
+  const nodeIdB = r.json.data?.id;
+  if (!nodeIdB) throw new Error(`create node b: no id: ${JSON.stringify(r.json)}`);
+
+  r = await a.req('GET', `/kbs/${kbId}/tree`);
+  assertOk('tree list before reorder', r);
+  const roots = (r.json.data?.items ?? []).filter((n) => n.parentId == null);
+  const aNode = roots.find((n) => n.id === nodeId);
+  const bNode = roots.find((n) => n.id === nodeIdB);
+  if (!aNode || !bNode) throw new Error('tree missing siblings');
+  r = await a.req('POST', `/nodes/${nodeId}/move`, {
+    parentId: null,
+    sortOrder: bNode.sortOrder,
+  });
+  assertOk('move A sort', r);
+  r = await a.req('POST', `/nodes/${nodeIdB}/move`, {
+    parentId: null,
+    sortOrder: aNode.sortOrder,
+  });
+  assertOk('move B sort', r);
+  r = await a.req('GET', `/kbs/${kbId}/tree`);
+  assertOk('tree list after reorder', r);
+  const rootsAfter = (r.json.data?.items ?? [])
+    .filter((n) => n.parentId == null)
+    .slice()
+    .sort((x, y) => x.sortOrder - y.sortOrder || x.title.localeCompare(y.title));
+  if (rootsAfter[0]?.id !== nodeIdB || rootsAfter[1]?.id !== nodeId) {
+    throw new Error(
+      `sibling reorder failed: order=${rootsAfter.map((n) => `${n.id}:${n.sortOrder}`).join(',')}`,
+    );
+  }
+  console.log('    sibling reorder ok');
+
   // 4) Put content
   r = await a.req('PUT', `/nodes/${nodeId}/content`, {
     expectedVersion: 1,

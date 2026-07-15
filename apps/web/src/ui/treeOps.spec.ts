@@ -7,6 +7,8 @@ import {
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
+  planSiblingReorder,
+  siblingReorderAvailability,
 } from './treeOps';
 
 function node(partial: Partial<PublicNode> & Pick<PublicNode, 'id' | 'title' | 'type'>): PublicNode {
@@ -85,5 +87,51 @@ describe('normalizeKbDescription', () => {
 
   it('rejects over 2000', () => {
     assert.equal(normalizeKbDescription('y'.repeat(2001)).ok, false);
+  });
+});
+
+describe('planSiblingReorder', () => {
+  const siblings = [
+    node({ id: 'a', title: 'A', type: 'doc', parentId: null, sortOrder: 1000 }),
+    node({ id: 'b', title: 'B', type: 'doc', parentId: null, sortOrder: 2000 }),
+    node({ id: 'c', title: 'C', type: 'doc', parentId: null, sortOrder: 3000 }),
+    node({ id: 'child', title: 'X', type: 'doc', parentId: 'a', sortOrder: 1000 }),
+  ];
+
+  it('swaps with previous on up', () => {
+    const r = planSiblingReorder(siblings, 'b', 'up');
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.moves[0].id, 'b');
+    assert.equal(r.moves[0].sortOrder, 1000);
+    assert.equal(r.moves[1].id, 'a');
+    assert.equal(r.moves[1].sortOrder, 2000);
+  });
+
+  it('swaps with next on down', () => {
+    const r = planSiblingReorder(siblings, 'b', 'down');
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.moves[0].id, 'b');
+    assert.equal(r.moves[0].sortOrder, 3000);
+    assert.equal(r.moves[1].id, 'c');
+    assert.equal(r.moves[1].sortOrder, 2000);
+  });
+
+  it('blocks already first/last and lone sibling', () => {
+    assert.equal(planSiblingReorder(siblings, 'a', 'up').ok, false);
+    assert.equal(planSiblingReorder(siblings, 'c', 'down').ok, false);
+    assert.equal(planSiblingReorder(siblings, 'child', 'up').ok, false);
+  });
+
+  it('siblingReorderAvailability', () => {
+    assert.deepEqual(siblingReorderAvailability(siblings, 'a'), {
+      canUp: false,
+      canDown: true,
+    });
+    assert.deepEqual(siblingReorderAvailability(siblings, 'b'), {
+      canUp: true,
+      canDown: true,
+    });
   });
 });
