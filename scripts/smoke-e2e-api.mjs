@@ -199,13 +199,13 @@ async function main() {
   assertOk('move B sort', r);
   r = await a.req('GET', `/kbs/${kbId}/tree`);
   assertOk('tree list after reorder', r);
-  const after = (r.json.data?.items ?? [])
+  const rootsAfter = (r.json.data?.items ?? [])
     .filter((n) => n.parentId == null)
     .slice()
     .sort((x, y) => x.sortOrder - y.sortOrder || x.title.localeCompare(y.title));
-  if (after[0]?.id !== nodeIdB || after[1]?.id !== nodeId) {
+  if (rootsAfter[0]?.id !== nodeIdB || rootsAfter[1]?.id !== nodeId) {
     throw new Error(
-      `sibling reorder failed: order=${after.map((n) => `${n.id}:${n.sortOrder}`).join(',')}`,
+      `sibling reorder failed: order=${rootsAfter.map((n) => `${n.id}:${n.sortOrder}`).join(',')}`,
     );
   }
   console.log('    sibling reorder ok');
