@@ -181,9 +181,10 @@ async function main() {
   console.log('    content saved v2');
 
   // 4b) Overwrite → content_revisions
+  const bodyMdAfterOverwrite = `${bodyMd}\n\noverwritten`;
   r = await a.req('POST', `/nodes/${nodeId}/content/overwrite`, {
     baseVersion: 2,
-    bodyMd: `${bodyMd}\n\noverwritten`,
+    bodyMd: bodyMdAfterOverwrite,
   });
   assertOk('overwrite content', r);
   if (r.json.data?.version !== 3) {
@@ -204,7 +205,7 @@ async function main() {
   const revisionId = revItems[0].id;
   console.log(`    revisions listed n=${revItems.length} id=${revisionId}`);
 
-  // 4d) Get revision detail (pre-overwrite body)
+  // 4d) Get revision detail (pre-overwrite body = body before overwrite)
   r = await a.req('GET', `/nodes/${nodeId}/content/revisions/${revisionId}`);
   assertOk('get revision', r);
   if (r.json.data?.bodyMd !== bodyMd || r.json.data?.version !== 2) {
