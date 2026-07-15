@@ -28,7 +28,7 @@ const x = 1;
     assert.equal(d[0], 'h1:Title');
     assert.ok(d.some((x) => x.startsWith('p:Intro')));
     assert.ok(d.some((x) => x === 'h2:Sub'));
-    assert.ok(d.some((x) => x === 'list:one|two'));
+    assert.ok(d.some((x) => x === 'ul:one|two'));
     assert.ok(d.some((x) => x.startsWith('code:ts:')));
     assert.ok(d.some((x) => x.includes('[link](https://example.com)')));
   });
@@ -45,6 +45,25 @@ const x = 1;
     if (blocks[0]?.type === 'code') {
       assert.equal(blocks[0].body, 'code only');
     }
+  });
+
+  it('parses ordered list blockquote table and hr', () => {
+    const src = `1. alpha
+2. beta
+
+> quote line
+
+| A | B |
+| --- | --- |
+| 1 | 2 |
+
+---
+`;
+    const d = describeBlocks(src);
+    assert.ok(d.some((x) => x === 'ol:alpha|beta'));
+    assert.ok(d.some((x) => x === 'quote:quote line'));
+    assert.ok(d.some((x) => x === 'table:A,B;1,2'));
+    assert.ok(d.some((x) => x === 'hr'));
   });
 });
 
