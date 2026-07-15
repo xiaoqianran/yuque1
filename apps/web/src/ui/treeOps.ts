@@ -194,3 +194,89 @@ export function collectParentIdsWithChildren(nodes: PublicNode[]): string[] {
   }
   return [...counts.keys()];
 }
+
+/**
+ * Resolve parent for a new node (folder or doc).
+ * - Selected folder → create inside that folder
+ * - Selected doc → create as sibling (same parent)
+ * - Nothing selected → library root
+ *
+ * Documents are leaves for *new* creates only; historical doc subtrees still render.
+ */
+export function resolveCreateParentId(
+  selected: Pick<PublicNode, 'id' | 'type' | 'parentId'> | null | undefined,
+): string | null {
+  if (!selected) return null;
+  if (selected.type === 'folder') return selected.id;
+  return selected.parentId ?? null;
+}
+
+/** Build parentId → sorted children map for tree rendering. */
+export function buildChildrenMap(
+  nodes: PublicNode[],
+): Map<string | null, PublicNode[]> {
+  const map = new Map<string | null, PublicNode[]>();
+  for (const n of nodes) {
+    const key = n.parentId;
+    const list = map.get(key) ?? [];
+    list.push(n);
+    map.set(key, list);
+  }
+  for (const list of map.values()) {
+    list.sort(compareSiblingOrder);
+  }
+  return map;
+}
+
+/**
+ * Default document to open when entering a knowledge base.
+ * Priority: lastOpenedId (if still a doc) → first recent valid doc → first doc in tree order → null.
+ */
+export function pickDefaultDocument(
+  nodes: PublicNode[],
+  opts?: {
+    lastOpenedId?: string | null;
+    recentIds?: readonly string[];
+  },
+): PublicNode | null {
+  const docs = nodes.filter((n) => n.type === 'doc');
+  if (docs.length === 0) return null;
+  const byId = new Map(docs.map((d) => [d.id, d]));
+
+  const last = opts?.lastOpenedId?.trim();
+  if (last && byId.has(last)) return byId.get(last)!;
+
+  for (const id of opts?.recentIds ?? []) {
+    const hit = byId.get(id);
+    if (hit) return hit;
+  }
+
+  // First document in DFS tree order (root → children by sortOrder)
+  const childMap = buildChildrenMap(nodes);
+  const stack: PublicNode[] = [...(childMap.get(null) ?? [])].reverse();
+  while (stack.length) {
+    const n = stack.pop()!;
+    if (n.type === 'doc') return n;
+    const kids = childMap.get(n.id) ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]!);
+  }
+  return docs[0] ?? null;
+}
+
+/** Breadcrumb path from root to node (inclusive). */
+export function buildBreadcrumbPath(
+  nodes: PublicNode[],
+  nodeId: string,
+): PublicNode[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const path: PublicNode[] = [];
+  let cur = byId.get(nodeId);
+  const guard = new Set<string>();
+  while (cur) {
+    if (guard.has(cur.id)) break;
+    guard.add(cur.id);
+    path.unshift(cur);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return path;
+}

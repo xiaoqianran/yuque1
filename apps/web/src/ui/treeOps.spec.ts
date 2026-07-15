@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { PublicNode } from '../api/types';
 import {
+  buildBreadcrumbPath,
+  buildChildrenMap,
   buildMoveParentOptions,
   collectAncestorIds,
   collectParentIdsWithChildren,
@@ -10,7 +12,9 @@ import {
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
+  pickDefaultDocument,
   planSiblingReorder,
+  resolveCreateParentId,
   siblingReorderAvailability,
   toggleCollapsedId,
 } from './treeOps';
@@ -175,5 +179,98 @@ describe('tree collapse helpers', () => {
     assert.equal(ids.includes('root'), true);
     assert.equal(ids.includes('mid'), true);
     assert.equal(ids.includes('leaf'), false);
+  });
+});
+
+describe('resolveCreateParentId', () => {
+  it('creates inside selected folder', () => {
+    assert.equal(
+      resolveCreateParentId({ id: 'f1', type: 'folder', parentId: null }),
+      'f1',
+    );
+  });
+
+  it('creates sibling when selected is document', () => {
+    assert.equal(
+      resolveCreateParentId({ id: 'd1', type: 'doc', parentId: 'f1' }),
+      'f1',
+    );
+    assert.equal(
+      resolveCreateParentId({ id: 'd2', type: 'doc', parentId: null }),
+      null,
+    );
+  });
+
+  it('creates at root when nothing selected', () => {
+    assert.equal(resolveCreateParentId(null), null);
+    assert.equal(resolveCreateParentId(undefined), null);
+  });
+});
+
+describe('pickDefaultDocument', () => {
+  const nodes = [
+    node({ id: 'f', title: 'Folder', type: 'folder', parentId: null, sortOrder: 1 }),
+    node({ id: 'd1', title: 'First', type: 'doc', parentId: 'f', sortOrder: 1 }),
+    node({ id: 'd2', title: 'Second', type: 'doc', parentId: null, sortOrder: 2 }),
+  ];
+
+  it('prefers last opened document', () => {
+    const picked = pickDefaultDocument(nodes, {
+      lastOpenedId: 'd2',
+      recentIds: ['d1'],
+    });
+    assert.equal(picked?.id, 'd2');
+  });
+
+  it('falls back to recent then first tree doc', () => {
+    assert.equal(
+      pickDefaultDocument(nodes, { recentIds: ['d1', 'd2'] })?.id,
+      'd1',
+    );
+    // tree order: f children first → d1 before root d2 when walking DFS from root children
+    const first = pickDefaultDocument(nodes, {});
+    assert.ok(first);
+    assert.equal(first.type, 'doc');
+  });
+
+  it('returns null for empty or folder-only tree', () => {
+    assert.equal(pickDefaultDocument([], {}), null);
+    assert.equal(
+      pickDefaultDocument(
+        [node({ id: 'f', title: 'F', type: 'folder', parentId: null })],
+        {},
+      ),
+      null,
+    );
+  });
+
+  it('ignores last opened if no longer a doc', () => {
+    assert.equal(
+      pickDefaultDocument(nodes, { lastOpenedId: 'f', recentIds: ['d2'] })?.id,
+      'd2',
+    );
+  });
+});
+
+describe('buildChildrenMap / buildBreadcrumbPath', () => {
+  const nodes = [
+    node({ id: 'a', title: 'A', type: 'folder', parentId: null, sortOrder: 2 }),
+    node({ id: 'b', title: 'B', type: 'doc', parentId: 'a', sortOrder: 1 }),
+    node({ id: 'c', title: 'C', type: 'doc', parentId: null, sortOrder: 1 }),
+  ];
+
+  it('sorts siblings', () => {
+    const map = buildChildrenMap(nodes);
+    assert.deepEqual(
+      (map.get(null) ?? []).map((n) => n.id),
+      ['c', 'a'],
+    );
+  });
+
+  it('breadcrumb path', () => {
+    assert.deepEqual(
+      buildBreadcrumbPath(nodes, 'b').map((n) => n.id),
+      ['a', 'b'],
+    );
   });
 });

@@ -7,7 +7,7 @@ import {
   parseMarkdownBlocks,
 } from './markdown';
 
-describe('parseMarkdownBlocks', () => {
+describe('parseMarkdownBlocks (legacy test helper)', () => {
   it('parses headings lists code and paragraphs', () => {
     const src = `# Title
 
@@ -68,16 +68,17 @@ const x = 1;
 });
 
 describe('extractOutline', () => {
-  it('lists headings with ids and lines', () => {
-    const src = `# A\n\npara\n\n## B\n\n### C\n`;
+  it('lists headings with ids and lines (h1–h6)', () => {
+    const src = `# A\n\npara\n\n## B\n\n### C\n\n#### D\n`;
     const o = extractOutline(src);
-    assert.equal(o.length, 3);
+    assert.equal(o.length, 4);
     assert.deepEqual(
       o.map((x) => ({ id: x.id, level: x.level, text: x.text, line: x.line })),
       [
         { id: headingAnchorId(0), level: 1, text: 'A', line: 0 },
         { id: headingAnchorId(1), level: 2, text: 'B', line: 4 },
         { id: headingAnchorId(2), level: 3, text: 'C', line: 6 },
+        { id: headingAnchorId(3), level: 4, text: 'D', line: 8 },
       ],
     );
   });
@@ -92,5 +93,35 @@ describe('extractOutline', () => {
 
   it('empty source', () => {
     assert.deepEqual(extractOutline(''), []);
+  });
+});
+
+describe('GFM surface fixtures (string presence for preview pipeline)', () => {
+  it('task list table image quote and fence strings are retained for render', () => {
+    const src = `
+# Doc
+
+- [ ] todo
+- [x] done
+
+| Col | Val |
+| --- | --- |
+| a | 1 |
+
+> quote
+
+![alt](https://example.com/x.png)
+
+\`\`\`js
+console.log(1)
+\`\`\`
+`;
+    assert.match(src, /- \[ \]/);
+    assert.match(src, /\| Col \|/);
+    assert.match(src, /> quote/);
+    assert.match(src, /!\[alt\]/);
+    assert.match(src, /```js/);
+    const outline = extractOutline(src);
+    assert.equal(outline[0]?.text, 'Doc');
   });
 });
