@@ -10,6 +10,7 @@ type Props = {
   collapsedIds: ReadonlySet<string>;
   canWrite: boolean;
   mobileOpen?: boolean;
+  onMobileClose?: () => void;
   searchQ: string;
   onSearchQChange: (v: string) => void;
   onSearch: () => void;
@@ -36,6 +37,7 @@ export function KnowledgeSidebar({
   collapsedIds,
   canWrite,
   mobileOpen,
+  onMobileClose,
   searchQ,
   onSearchQChange,
   onSearch,
@@ -58,7 +60,22 @@ export function KnowledgeSidebar({
     <aside
       className={`ws-sidebar${mobileOpen ? ' ws-sidebar--open' : ''}`}
       aria-label="知识库导航"
+      id="ws-knowledge-sidebar"
     >
+      {onMobileClose && (
+        <div className="ws-sidebar-mobile-bar">
+          <span className="ws-sidebar-mobile-title">文档目录</span>
+          <button
+            type="button"
+            className="ws-icon-btn"
+            aria-label="关闭文档目录"
+            title="关闭"
+            onClick={onMobileClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
+      )}
       <KnowledgeHeader kb={kb} onAction={onKbMenu} />
 
       <div className="ws-sidebar-tools">
