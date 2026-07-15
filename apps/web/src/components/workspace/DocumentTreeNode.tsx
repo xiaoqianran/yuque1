@@ -19,6 +19,7 @@ export type TreeNodeMenuAction =
   | 'move'
   | 'up'
   | 'down'
+  | 'duplicate'
   | 'delete';
 
 type Props = {
@@ -267,6 +268,16 @@ export function DocumentTreeNode({
           >
             下移
           </button>
+          {node.type === 'doc' && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!canWrite}
+              onClick={() => onMenuAction('duplicate')}
+            >
+              复制文档
+            </button>
+          )}
           <div className="ws-menu-sep" />
           <button
             type="button"

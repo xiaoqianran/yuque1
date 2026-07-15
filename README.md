@@ -2,7 +2,8 @@
 
 复刻语雀（Yuque）核心能力的可自托管知识库：企业级研发流程、OpenAPI 契约先行，前后端迭代交付。
 
-**当前发布**：**[v0.6.3](https://github.com/xiaoqianran/yuque1/releases/tag/v0.6.3)**（OpenAPI **0.1.9**）
+**当前发布**：**[v0.6.3](https://github.com/xiaoqianran/yuque1/releases/tag/v0.6.3)**（OpenAPI **0.1.10**）  
+**开发主干 `dev`**：工作区信息架构、拖拽排序、复制文档等已合入（待下一正式 release）
 
 ## 能力一览
 
@@ -10,12 +11,14 @@
 |------|------|
 | 短信登录 | Mock 验证码；Cookie `sid` 会话 |
 | 个人资料 | 昵称更新；可选邮箱绑定（不验证） |
-| 知识库 | 创建/列表/改名/简介/软删（卡片网格 UI） |
-| 文档树 | folder/doc、搜索、重命名、移动、折叠、最近打开 |
-| 正文 | 自动保存 / MD 预览+大纲 / 字数 / **导入·导出 MD** / **专注模式** / Ctrl+S |
+| 知识库 | 创建/列表/改名/简介/软删；删除确认 Dialog |
+| 文档树 | folder/doc、搜索、重命名、移动、折叠、**拖拽排序**、**复制文档**、键盘上下选择 |
+| 回收站 | 软删列表与恢复 |
+| 工作区 IA | 侧栏仅导航+树；设置/成员/分享/历史进 Dialog/Drawer；默认打开最近/首篇文档 |
+| 正文 | CodeMirror 编辑 / **react-markdown GFM 预览** / 大纲 / 字数 / 导入·导出 MD / 专注 / Ctrl+S / 自动保存 |
 | 分享 | token 公开只读；有效期；分享页 MD 渲染 |
 | 成员 | owner 添加 editor/reader；转让 owner |
-| UI | Inter 字体 · 毛玻璃顶栏 · 登录分栏 · ui-ux-pro-max |
+| UI | 平面内容优先工作区 · 系统中文字体 · 可访问确认 Dialog |
 
 ## 快速启动
 

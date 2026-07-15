@@ -181,6 +181,7 @@ export function KbWorkspacePage() {
             onMoveRequest={(node) => ws.setMoveTarget(node)}
             onReorder={(node, dir) => void ws.reorderSibling(node, dir)}
             onDeleteRequest={(node) => ws.setDeleteTarget(node)}
+            onDuplicateRequest={(node) => void ws.duplicateDocument(node)}
             onDragMove={(plan) => void ws.dragMoveNode(plan)}
             renameNodeId={ws.renameNodeId}
             onRenameNodeIdChange={ws.setRenameNodeId}
@@ -313,6 +314,9 @@ export function KbWorkspacePage() {
                       break;
                     case 'copy':
                       void copyBody();
+                      break;
+                    case 'duplicate':
+                      if (ws.selected) void ws.duplicateDocument(ws.selected);
                       break;
                     case 'history':
                       void ws.loadRevisions();
