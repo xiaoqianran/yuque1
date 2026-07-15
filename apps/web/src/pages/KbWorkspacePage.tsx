@@ -17,10 +17,21 @@ import {
   isDirty,
 } from '../ui/autosave';
 import {
+  computeDocStats,
+  downloadMarkdownFile,
+  formatDocStats,
+} from '../ui/docStats';
+import {
   extractOutline,
   focusTextareaLine,
   MarkdownView,
 } from '../ui/markdown';
+import {
+  filterRecentIds,
+  loadRecentDocIds,
+  recordRecentDoc,
+  saveRecentDocIds,
+} from '../ui/recentDocs';
 import {
   expiresAtFromPreset,
   formatShareExpiry,
@@ -170,6 +181,7 @@ export function KbWorkspacePage() {
   const [saving, setSaving] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
 
@@ -184,6 +196,18 @@ export function KbWorkspacePage() {
     () => (selected?.type === 'doc' ? extractOutline(body) : []),
     [selected?.type, body],
   );
+  const docStats = useMemo(() => computeDocStats(body), [body]);
+  const docStatsLabel = useMemo(() => formatDocStats(docStats), [docStats]);
+  const nodesById = useMemo(() => {
+    const m = new Map<string, PublicNode>();
+    for (const n of nodes) m.set(n.id, n);
+    return m;
+  }, [nodes]);
+  const recentDocs = useMemo(() => {
+    return recentIds
+      .map((id) => nodesById.get(id))
+      .filter((n): n is PublicNode => !!n && n.type === 'doc');
+  }, [recentIds, nodesById]);
   const reorderAvail = useMemo(
     () =>
       selected
@@ -217,6 +241,27 @@ export function KbWorkspacePage() {
     void loadWorkspace();
   }, [loadWorkspace]);
 
+  // Load recent docs when kb changes
+  useEffect(() => {
+    setRecentIds(loadRecentDocIds(kbId));
+  }, [kbId]);
+
+  // Drop deleted / non-doc ids from recent when tree refreshes
+  useEffect(() => {
+    if (nodes.length === 0) return;
+    const valid = new Set(
+      nodes.filter((n) => n.type === 'doc').map((n) => n.id),
+    );
+    setRecentIds((prev) => {
+      const next = filterRecentIds(prev, valid);
+      if (next.length !== prev.length || next.some((id, i) => id !== prev[i])) {
+        saveRecentDocIds(kbId, next);
+        return next;
+      }
+      return prev;
+    });
+  }, [nodes, kbId]);
+
   async function openNode(n: PublicNode) {
     setSelected(n);
     setRenameTitle(n.title);
@@ -234,6 +279,9 @@ export function KbWorkspacePage() {
     setCollapsedIds((prev) =>
       expandAncestorsInCollapsed(prev, collectAncestorIds(nodes, n.id)),
     );
+    if (n.type === 'doc') {
+      setRecentIds(recordRecentDoc(kbId, n.id));
+    }
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -348,6 +396,17 @@ export function KbWorkspacePage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selected?.type, canWrite, saving, version, save]);
+
+  // Warn when leaving with unsaved edits
+  useEffect(() => {
+    if (!dirty) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
@@ -694,6 +753,37 @@ export function KbWorkspacePage() {
               void loadWorkspace();
             }}
           />
+          {recentDocs.length > 0 && (
+            <div className="recent-docs" aria-label="最近打开的文档">
+              <div className="recent-docs-head">
+                <strong>最近</strong>
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  onClick={() => {
+                    setRecentIds([]);
+                    saveRecentDocIds(kbId, []);
+                  }}
+                >
+                  清空
+                </button>
+              </div>
+              <ul className="recent-docs-list">
+                {recentDocs.map((n) => (
+                  <li key={n.id}>
+                    <button
+                      type="button"
+                      className={`recent-docs-item${selected?.id === n.id ? ' active' : ''}`}
+                      onClick={() => void openNode(n)}
+                      title={n.title}
+                    >
+                      {n.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="tree-actions">
           <div className="row">
@@ -956,6 +1046,16 @@ export function KbWorkspacePage() {
                 >
                   保存
                 </button>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() =>
+                    downloadMarkdownFile(selected.title || 'untitled', body)
+                  }
+                  title="下载当前编辑区内容为 .md"
+                >
+                  导出 MD
+                </button>
                 <label className="share-expiry-inline">
                   <span className="muted">有效期</span>
                   <select
@@ -1018,6 +1118,10 @@ export function KbWorkspacePage() {
               </div>
             </div>
             {status && <p className="status-line">{status}</p>}
+            <p className="doc-stats muted" aria-live="polite">
+              {docStatsLabel}
+              {dirty ? ' · 未保存' : ''}
+            </p>
             {revisionsOpen && (
               <div className="revisions-panel card" aria-label="覆盖前历史快照">
                 <div className="row" style={{ width: '100%' }}>
