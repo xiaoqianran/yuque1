@@ -663,7 +663,8 @@ export function useKnowledgeWorkspace(kbId: string) {
     setSearching(true);
     setError(null);
     try {
-      const data = await treeApi.search(kbId, q);
+      // Default scope=all: match title or document body
+      const data = await treeApi.search(kbId, q, 50, 'all');
       setSearchHits(data.items);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '搜索失败');

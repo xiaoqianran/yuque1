@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.12
+  version: 0.1.13
   contact:
     name: yuque1
 
@@ -450,7 +450,11 @@ paths:
       - $ref: '#/components/parameters/KbId'
     get:
       tags: [Tree]
-      summary: 标题搜索节点
+      summary: 搜索节点（标题与/或正文）
+      description: |
+        默认 `scope=all`：标题包含 **或** 文档正文（bodyMd）包含关键词（不区分大小写）。
+        `scope=title` 仅标题；`scope=content` 仅正文（仅 type=doc）。
+        结果按 updatedAt 倒序，最多 limit 条。
       operationId: searchKbNodes
       parameters:
         - name: q
@@ -467,6 +471,13 @@ paths:
             minimum: 1
             maximum: 100
             default: 50
+        - name: scope
+          in: query
+          description: title | content | all（默认 all）
+          schema:
+            type: string
+            enum: [title, content, all]
+            default: all
       responses:
         '200':
           description: OK

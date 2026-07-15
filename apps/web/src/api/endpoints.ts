@@ -63,9 +63,14 @@ export const treeApi = {
     apiRequest<{ purgedCount: number }>(`/kbs/${kbId}/trash/empty`, {
       method: 'POST',
     }),
-  search: (kbId: string, q: string, limit = 50) =>
+  search: (
+    kbId: string,
+    q: string,
+    limit = 50,
+    scope: 'title' | 'content' | 'all' = 'all',
+  ) =>
     apiRequest<{ items: PublicNode[] }>(
-      `/kbs/${kbId}/nodes?q=${encodeURIComponent(q)}&limit=${limit}`,
+      `/kbs/${kbId}/nodes?q=${encodeURIComponent(q)}&limit=${limit}&scope=${scope}`,
     ),
   create: (
     kbId: string,

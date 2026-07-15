@@ -92,8 +92,8 @@ export function KnowledgeSidebar({
           <input
             value={searchQ}
             onChange={(e) => onSearchQChange(e.target.value)}
-            placeholder="搜索文档…"
-            aria-label="搜索节点标题"
+            placeholder="搜索标题或正文…"
+            aria-label="搜索文档标题或正文"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
