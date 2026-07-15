@@ -25,7 +25,7 @@ export const authApi = {
     }),
   logout: () => apiRequest<null>('/auth/logout', { method: 'POST' }),
   me: () => apiRequest<PublicUser>('/auth/me'),
-  updateMe: (patch: { nickname: string }) =>
+  updateMe: (patch: { nickname?: string; email?: string | null }) =>
     apiRequest<PublicUser>('/auth/me', {
       method: 'PATCH',
       body: JSON.stringify(patch),

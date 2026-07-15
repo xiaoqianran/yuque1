@@ -85,7 +85,7 @@ export class AuthController {
   async updateMe(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-    @Body() body: { nickname?: string },
+    @Body() body: { nickname?: string; email?: string | null },
   ) {
     const userId = await this.requireUserId(req, res);
     if (!userId) return fail('UNAUTHORIZED', '未登录');
