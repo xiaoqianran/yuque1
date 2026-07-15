@@ -277,11 +277,13 @@ async function main() {
   if (!found) throw new Error('B list kbs: shared kb missing');
   console.log('    B sees kb in list');
 
-  // 10) B can read content
+  // 10) B can read content (current after overwrite)
   r = await b.req('GET', `/nodes/${nodeId}/content`);
   assertOk('B get content', r);
-  if (r.json.data?.bodyMd !== bodyMd) {
-    throw new Error('B get content body mismatch');
+  if (r.json.data?.bodyMd !== bodyMdAfterOverwrite) {
+    throw new Error(
+      `B get content body mismatch: got=${JSON.stringify(r.json.data?.bodyMd)}`,
+    );
   }
   console.log('    B can read content');
 
