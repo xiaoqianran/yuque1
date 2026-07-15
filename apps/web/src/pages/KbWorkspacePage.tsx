@@ -4,6 +4,7 @@ import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
 import { StatePanel } from '../components/StatePanel';
+import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
 import { resolveViewPhase } from '../ui/viewState';
 
 function buildChildrenMap(nodes: PublicNode[]): Map<string | null, PublicNode[]> {
@@ -78,6 +79,7 @@ export function KbWorkspacePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [docLoading, setDocLoading] = useState(false);
+  const [copyHint, setCopyHint] = useState<string | null>(null);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
 
@@ -198,6 +200,7 @@ export function KbWorkspacePage() {
       if (share?.enabled) {
         await shareApi.disable(selected.id);
         setShare({ enabled: false, token: null, urlPath: null, expiresAt: null });
+        setCopyHint(null);
         setStatus('已关闭分享');
       } else {
         const s = await shareApi.enable(selected.id);
@@ -209,10 +212,38 @@ export function KbWorkspacePage() {
     }
   }
 
-  const publicSharePath =
-    share?.enabled && share.token
-      ? `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}s/${share.token}`
-      : null;
+  async function deleteSelected() {
+    if (!selected) return;
+    if (!window.confirm(confirmDeleteNodeMessage(selected.title, selected.type))) {
+      return;
+    }
+    try {
+      await treeApi.remove(selected.id);
+      setSelected(null);
+      setBody('');
+      setVersion(null);
+      setShare(null);
+      setStatus(`已删除「${selected.title}」`);
+      await refreshTree();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '删除失败');
+    }
+  }
+
+  async function copyShareUrl() {
+    if (!share?.token) return;
+    const url = buildPublicShareUrl(share.token);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyHint('已复制到剪贴板');
+    } catch {
+      // fallback: select-friendly
+      setCopyHint('请手动复制下方链接');
+    }
+  }
+
+  const publicShareUrl =
+    share?.enabled && share.token ? buildPublicShareUrl(share.token) : null;
 
   const loadPhase = resolveViewPhase({
     loading,
@@ -279,6 +310,15 @@ export function KbWorkspacePage() {
             </button>
           </div>
           <p className="hint">新建挂在当前选中节点下（文档也可挂子节点）</p>
+          {selected && (
+            <button
+              type="button"
+              className="btn secondary small danger-outline"
+              onClick={() => void deleteSelected()}
+            >
+              删除选中节点
+            </button>
+          )}
         </div>
         <div className="tree-scroll">
           {nodes.length === 0 ? (
@@ -339,6 +379,13 @@ export function KbWorkspacePage() {
                 >
                   {share?.enabled ? '关闭分享' : '开启分享'}
                 </button>
+                <button
+                  type="button"
+                  className="btn secondary small danger-outline"
+                  onClick={() => void deleteSelected()}
+                >
+                  删除
+                </button>
               </div>
             </div>
             {status && <p className="status-line">{status}</p>}
@@ -367,11 +414,20 @@ export function KbWorkspacePage() {
                 </div>
               </div>
             )}
-            {publicSharePath && share?.token && (
-              <p className="share-link">
-                公开链接： <Link to={`/s/${share.token}`}>{publicSharePath}</Link>
-                <span className="muted"> （相对本站路径）</span>
-              </p>
+            {publicShareUrl && share?.token && (
+              <div className="share-link">
+                <div className="row" style={{ width: '100%' }}>
+                  <span className="share-link-label">公开链接</span>
+                  <button type="button" className="btn secondary small" onClick={() => void copyShareUrl()}>
+                    复制链接
+                  </button>
+                  {copyHint && <span className="muted">{copyHint}</span>}
+                </div>
+                <a className="share-link-url" href={publicShareUrl} target="_blank" rel="noreferrer">
+                  {publicShareUrl}
+                </a>
+                <p className="hint">也可在站内打开： <Link to={`/s/${share.token}`}>预览分享页</Link></p>
+              </div>
             )}
             {docLoading ? (
               <StatePanel phase="loading" title="加载正文" description="读取文档内容与版本…" />
