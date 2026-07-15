@@ -193,6 +193,9 @@ export function KbWorkspacePage() {
                 case 'members':
                   ws.setMembersOpen(true);
                   break;
+                case 'export-zip':
+                  void ws.exportKbZip();
+                  break;
                 case 'trash':
                   ws.setTrashOpen(true);
                   break;

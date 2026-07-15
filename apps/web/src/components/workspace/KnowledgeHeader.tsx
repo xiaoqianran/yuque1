@@ -5,6 +5,7 @@ import type { PublicKb } from '../../api/types';
 export type KbMenuAction =
   | 'settings'
   | 'members'
+  | 'export-zip'
   | 'expand-all'
   | 'collapse-all'
   | 'trash'
@@ -88,6 +89,16 @@ export function KnowledgeHeader({ kb, onAction }: Props) {
             }}
           >
             成员管理
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onAction('export-zip');
+            }}
+          >
+            导出 Markdown ZIP
           </button>
           <button
             type="button"
