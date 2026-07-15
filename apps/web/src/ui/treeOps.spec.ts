@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import type { PublicNode } from '../api/types';
 import {
   buildMoveParentOptions,
+  collectAncestorIds,
+  collectParentIdsWithChildren,
+  expandAncestorsInCollapsed,
   normalizeKbDescription,
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
   planSiblingReorder,
   siblingReorderAvailability,
+  toggleCollapsedId,
 } from './treeOps';
 
 function node(partial: Partial<PublicNode> & Pick<PublicNode, 'id' | 'title' | 'type'>): PublicNode {
@@ -133,5 +137,43 @@ describe('planSiblingReorder', () => {
       canUp: true,
       canDown: true,
     });
+  });
+});
+
+describe('tree collapse helpers', () => {
+  const nodes = [
+    node({ id: 'root', title: 'R', type: 'folder', parentId: null }),
+    node({ id: 'mid', title: 'M', type: 'folder', parentId: 'root' }),
+    node({ id: 'leaf', title: 'L', type: 'doc', parentId: 'mid' }),
+  ];
+
+  it('collectAncestorIds root to parent', () => {
+    assert.deepEqual(collectAncestorIds(nodes, 'leaf'), ['root', 'mid']);
+    assert.deepEqual(collectAncestorIds(nodes, 'root'), []);
+  });
+
+  it('expandAncestorsInCollapsed opens path', () => {
+    const collapsed = new Set(['root', 'mid', 'other']);
+    const next = expandAncestorsInCollapsed(
+      collapsed,
+      collectAncestorIds(nodes, 'leaf'),
+    );
+    assert.equal(next.has('root'), false);
+    assert.equal(next.has('mid'), false);
+    assert.equal(next.has('other'), true);
+  });
+
+  it('toggleCollapsedId', () => {
+    const a = toggleCollapsedId(new Set(), 'x');
+    assert.equal(a.has('x'), true);
+    const b = toggleCollapsedId(a, 'x');
+    assert.equal(b.has('x'), false);
+  });
+
+  it('collectParentIdsWithChildren', () => {
+    const ids = collectParentIdsWithChildren(nodes);
+    assert.equal(ids.includes('root'), true);
+    assert.equal(ids.includes('mid'), true);
+    assert.equal(ids.includes('leaf'), false);
   });
 });

@@ -696,8 +696,42 @@ a:focus-visible {
   padding: 0;
 }
 
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tree-twistie,
+.tree-twistie-spacer {
+  flex-shrink: 0;
+  width: 18px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--color-text-secondary);
+}
+
+.tree-twistie {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+}
+
+.tree-twistie:hover {
+  background: var(--color-bg-muted);
+  color: var(--color-text);
+}
+
 .tree-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
@@ -714,6 +748,12 @@ a:focus-visible {
     background var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease);
+}
+
+.tree-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree-item:hover {
@@ -780,6 +820,17 @@ a:focus-visible {
   padding-right: 2px;
 }
 
+.tree-collapse-actions {
+  padding: 0 var(--space-1);
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.tree-collapse-actions .btn.ghost {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+}
+
 .editor-pane {
   display: flex;
   flex-direction: column;
@@ -804,6 +855,28 @@ a:focus-visible {
   font-size: var(--text-lg);
 }
 
+.editor-body-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.editor-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-preview-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .editor {
   flex: 1;
   min-height: 360px;
@@ -821,6 +894,73 @@ a:focus-visible {
   transition:
     border-color var(--duration-fast) var(--ease),
     box-shadow var(--duration-fast) var(--ease);
+}
+
+.doc-outline {
+  width: 200px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(70vh, 640px);
+  overflow: auto;
+}
+
+.doc-outline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.doc-outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doc-outline-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-outline-item:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-ink);
+}
+
+.doc-outline-item.level-1 {
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+}
+
+.doc-outline-item.level-2 {
+  padding-left: 14px;
+}
+
+.doc-outline-item.level-3 {
+  padding-left: 24px;
+  font-size: 11px;
 }
 
 .editor:hover {

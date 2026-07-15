@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
@@ -16,7 +16,11 @@ import {
   canAutosave,
   isDirty,
 } from '../ui/autosave';
-import { MarkdownView } from '../ui/markdown';
+import {
+  extractOutline,
+  focusTextareaLine,
+  MarkdownView,
+} from '../ui/markdown';
 import {
   expiresAtFromPreset,
   formatShareExpiry,
@@ -26,12 +30,16 @@ import {
 } from '../ui/shareExpiry';
 import {
   buildMoveParentOptions,
+  collectAncestorIds,
+  collectParentIdsWithChildren,
+  expandAncestorsInCollapsed,
   normalizeKbDescription,
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
   planSiblingReorder,
   siblingReorderAvailability,
+  toggleCollapsedId,
   type SiblingReorderDirection,
 } from '../ui/treeOps';
 import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
@@ -57,40 +65,71 @@ function TreeNodes({
   depth,
   selectedId,
   onSelect,
+  collapsedIds,
+  onToggleCollapse,
 }: {
   parentId: string | null;
   map: Map<string | null, PublicNode[]>;
   depth: number;
   selectedId: string | null;
   onSelect: (n: PublicNode) => void;
+  collapsedIds: ReadonlySet<string>;
+  onToggleCollapse: (nodeId: string) => void;
 }) {
   const children = map.get(parentId) ?? [];
   return (
     <ul className="tree" style={{ paddingLeft: depth === 0 ? 0 : 12 }}>
-      {children.map((n) => (
-        <li key={n.id}>
-          <button
-            type="button"
-            className={`tree-item ${selectedId === n.id ? 'active' : ''}`}
-            onClick={() => onSelect(n)}
-          >
-            <span
-              className={`tree-type ${n.type === 'folder' ? 'tree-type--folder' : 'tree-type--doc'}`}
-              aria-hidden
-            >
-              {n.type === 'folder' ? 'F' : 'D'}
-            </span>
-            <span>{n.title}</span>
-          </button>
-          <TreeNodes
-            parentId={n.id}
-            map={map}
-            depth={depth + 1}
-            selectedId={selectedId}
-            onSelect={onSelect}
-          />
-        </li>
-      ))}
+      {children.map((n) => {
+        const kids = map.get(n.id) ?? [];
+        const hasKids = kids.length > 0;
+        const collapsed = collapsedIds.has(n.id);
+        return (
+          <li key={n.id}>
+            <div className="tree-row">
+              {hasKids ? (
+                <button
+                  type="button"
+                  className="tree-twistie"
+                  aria-label={collapsed ? '展开子节点' : '折叠子节点'}
+                  aria-expanded={!collapsed}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleCollapse(n.id);
+                  }}
+                >
+                  {collapsed ? '▶' : '▼'}
+                </button>
+              ) : (
+                <span className="tree-twistie-spacer" aria-hidden />
+              )}
+              <button
+                type="button"
+                className={`tree-item ${selectedId === n.id ? 'active' : ''}`}
+                onClick={() => onSelect(n)}
+              >
+                <span
+                  className={`tree-type ${n.type === 'folder' ? 'tree-type--folder' : 'tree-type--doc'}`}
+                  aria-hidden
+                >
+                  {n.type === 'folder' ? 'F' : 'D'}
+                </span>
+                <span className="tree-item-title">{n.title}</span>
+              </button>
+            </div>
+            {hasKids && !collapsed && (
+              <TreeNodes
+                parentId={n.id}
+                map={map}
+                depth={depth + 1}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={onToggleCollapse}
+              />
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -129,6 +168,10 @@ export function KbWorkspacePage() {
   );
   const [lastSavedBody, setLastSavedBody] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -137,6 +180,10 @@ export function KbWorkspacePage() {
   );
   const canWrite = kb != null && kb.role !== 'reader';
   const dirty = isDirty(body, lastSavedBody);
+  const outline = useMemo(
+    () => (selected?.type === 'doc' ? extractOutline(body) : []),
+    [selected?.type, body],
+  );
   const reorderAvail = useMemo(
     () =>
       selected
@@ -184,6 +231,9 @@ export function KbWorkspacePage() {
     setEditorMode('edit');
     setLastSavedBody(null);
     setSaving(false);
+    setCollapsedIds((prev) =>
+      expandAncestorsInCollapsed(prev, collectAncestorIds(nodes, n.id)),
+    );
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -284,6 +334,21 @@ export function KbWorkspacePage() {
     save,
   ]);
 
+  // Ctrl/Cmd+S → manual save (block browser "Save Page")
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key !== 's' && e.key !== 'S') return;
+      e.preventDefault();
+      if (selected?.type !== 'doc' || !canWrite || saving || version == null) {
+        return;
+      }
+      void save({ auto: false });
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selected?.type, canWrite, saving, version, save]);
+
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
     const c = await contentApi.get(selected.id);
@@ -328,6 +393,21 @@ export function KbWorkspacePage() {
     } catch (e) {
       setStatus(e instanceof ApiError ? e.message : '打开快照失败');
     }
+  }
+
+  function jumpToOutline(item: { id: string; line: number }) {
+    if (editorMode === 'preview') {
+      setOutlineOpen(true);
+      // ensure preview painted with ids
+      requestAnimationFrame(() => {
+        const root = previewRef.current;
+        const el = root?.querySelector(`#${CSS.escape(item.id)}`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return;
+    }
+    const ta = editorRef.current;
+    if (ta) focusTextareaLine(ta, item.line);
   }
 
   function applyRevisionToEditor() {
@@ -758,6 +838,28 @@ export function KbWorkspacePage() {
             </>
           )}
         </div>
+        {nodes.length > 0 && (
+          <div className="row tree-collapse-actions">
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => setCollapsedIds(new Set())}
+              title="展开全部节点"
+            >
+              全部展开
+            </button>
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() =>
+                setCollapsedIds(new Set(collectParentIdsWithChildren(nodes)))
+              }
+              title="折叠所有有子节点的项"
+            >
+              全部折叠
+            </button>
+          </div>
+        )}
         <div className="tree-scroll">
           {nodes.length === 0 ? (
             <StatePanel
@@ -772,6 +874,10 @@ export function KbWorkspacePage() {
               depth={0}
               selectedId={selected?.id ?? null}
               onSelect={(n) => void openNode(n)}
+              collapsedIds={collapsedIds}
+              onToggleCollapse={(id) =>
+                setCollapsedIds((prev) => toggleCollapsedId(prev, id))
+              }
             />
           )}
         </div>
@@ -833,9 +939,20 @@ export function KbWorkspacePage() {
                 </div>
                 <button
                   type="button"
+                  className="btn secondary small"
+                  onClick={() => setOutlineOpen((v) => !v)}
+                  aria-pressed={outlineOpen}
+                  title="根据 # 标题生成大纲"
+                >
+                  {outlineOpen ? '收起大纲' : '大纲'}
+                  {outline.length > 0 ? ` (${outline.length})` : ''}
+                </button>
+                <button
+                  type="button"
                   className="btn primary small"
                   disabled={!canWrite || saving || version == null}
                   onClick={() => void save({ auto: false })}
+                  title="Ctrl/Cmd+S"
                 >
                   保存
                 </button>
@@ -1022,22 +1139,61 @@ export function KbWorkspacePage() {
             )}
             {docLoading ? (
               <StatePanel phase="loading" title="加载正文" description="读取文档内容与版本…" />
-            ) : editorMode === 'edit' ? (
-              <textarea
-                className="editor"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="在此编写 Markdown 正文…"
-                spellCheck={false}
-                aria-label="文档正文"
-                readOnly={!canWrite}
-              />
             ) : (
-              <MarkdownView
-                source={body}
-                className="md-preview editor-preview"
-                emptyLabel="（空文档 — 切换到编辑开始写）"
-              />
+              <div
+                className={`editor-body-row${outlineOpen ? ' editor-body-row--outline' : ''}`}
+              >
+                <div className="editor-main">
+                  {editorMode === 'edit' ? (
+                    <textarea
+                      ref={editorRef}
+                      className="editor"
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      placeholder="在此编写 Markdown 正文…"
+                      spellCheck={false}
+                      aria-label="文档正文"
+                      readOnly={!canWrite}
+                    />
+                  ) : (
+                    <div ref={previewRef} className="editor-preview-wrap">
+                      <MarkdownView
+                        source={body}
+                        className="md-preview editor-preview"
+                        emptyLabel="（空文档 — 切换到编辑开始写）"
+                      />
+                    </div>
+                  )}
+                </div>
+                {outlineOpen && (
+                  <aside className="doc-outline" aria-label="文档大纲">
+                    <div className="doc-outline-head">
+                      <strong>大纲</strong>
+                      <span className="muted">
+                        {outline.length ? `${outline.length} 个标题` : '无标题'}
+                      </span>
+                    </div>
+                    {!outline.length ? (
+                      <p className="hint">使用 # / ## / ### 标题后显示大纲</p>
+                    ) : (
+                      <ul className="doc-outline-list">
+                        {outline.map((item) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              className={`doc-outline-item level-${item.level}`}
+                              onClick={() => jumpToOutline(item)}
+                              title={`第 ${item.line + 1} 行`}
+                            >
+                              {item.text}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </aside>
+                )}
+              </div>
             )}
           </>
         )}
