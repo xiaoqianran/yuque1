@@ -342,6 +342,30 @@ export function useKnowledgeWorkspace(kbId: string) {
     [selected, refreshTree, setSelected],
   );
 
+  /** Drag-drop move with explicit sortOrder (real API). */
+  const dragMoveNode = useCallback(
+    async (plan: {
+      nodeId: string;
+      parentId: string | null;
+      sortOrder: number;
+    }) => {
+      if (!canWrite) return;
+      try {
+        const updated = await treeApi.move(
+          plan.nodeId,
+          plan.parentId,
+          plan.sortOrder,
+        );
+        if (selected?.id === updated.id) setSelected(updated);
+        setStatus('已拖拽移动');
+        await refreshTree();
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : '拖拽移动失败');
+      }
+    },
+    [canWrite, selected, refreshTree, setSelected],
+  );
+
   const reorderSibling = useCallback(
     async (node: PublicNode, direction: SiblingReorderDirection) => {
       const plan = planSiblingReorder(nodes, node.id, direction);
@@ -618,6 +642,7 @@ export function useKnowledgeWorkspace(kbId: string) {
     createNode,
     renameNode,
     moveNode,
+    dragMoveNode,
     reorderSibling,
     titleDraft,
     setTitleDraft,

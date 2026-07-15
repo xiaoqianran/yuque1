@@ -25,6 +25,11 @@ type Props = {
   onMoveRequest: (node: PublicNode) => void;
   onReorder: (node: PublicNode, direction: 'up' | 'down') => void;
   onDeleteRequest: (node: PublicNode) => void;
+  onDragMove?: (plan: {
+    nodeId: string;
+    parentId: string | null;
+    sortOrder: number;
+  }) => void;
   onKbMenu: (action: KbMenuAction) => void;
   renameNodeId?: string | null;
   onRenameNodeIdChange?: (id: string | null) => void;
@@ -52,6 +57,7 @@ export function KnowledgeSidebar({
   onMoveRequest,
   onReorder,
   onDeleteRequest,
+  onDragMove,
   onKbMenu,
   renameNodeId,
   onRenameNodeIdChange,
@@ -168,6 +174,7 @@ export function KnowledgeSidebar({
             onMoveRequest={onMoveRequest}
             onReorder={onReorder}
             onDeleteRequest={onDeleteRequest}
+            onDragMove={onDragMove}
             renameNodeId={renameNodeId}
             onRenameNodeIdChange={onRenameNodeIdChange}
           />

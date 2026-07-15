@@ -1,9 +1,21 @@
+import {
+  DndContext,
+  type DragEndEvent,
+  type DragOverEvent,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicNode } from '../../api/types';
 import {
   adjacentVisibleNode,
   buildChildrenMap,
+  inferDropPosition,
+  planTreeDrop,
   siblingReorderAvailability,
+  type TreeDropPosition,
 } from '../../ui/treeOps';
 import {
   DocumentTreeNode,
@@ -22,6 +34,12 @@ type Props = {
   onMoveRequest: (node: PublicNode) => void;
   onReorder: (node: PublicNode, direction: 'up' | 'down') => void;
   onDeleteRequest: (node: PublicNode) => void;
+  /** Apply planned drag drop via real API. */
+  onDragMove?: (plan: {
+    nodeId: string;
+    parentId: string | null;
+    sortOrder: number;
+  }) => void;
   renameNodeId?: string | null;
   onRenameNodeIdChange?: (id: string | null) => void;
 };
@@ -38,21 +56,41 @@ export function DocumentTree({
   onMoveRequest,
   onReorder,
   onDeleteRequest,
+  onDragMove,
   renameNodeId: controlledRenameId,
   onRenameNodeIdChange,
 }: Props) {
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const treeRef = useRef<HTMLDivElement | null>(null);
+  const pointerY = useRef(0);
   const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [internalRenameId, setInternalRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [dropOverId, setDropOverId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<TreeDropPosition | null>(
+    null,
+  );
 
   const renameNodeId = controlledRenameId ?? internalRenameId;
   const setRenameNodeId = (id: string | null) => {
     onRenameNodeIdChange?.(id);
     if (controlledRenameId === undefined) setInternalRenameId(id);
   };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
+
+  useEffect(() => {
+    function onPointerMove(e: PointerEvent) {
+      pointerY.current = e.clientY;
+    }
+    window.addEventListener('pointermove', onPointerMove);
+    return () => window.removeEventListener('pointermove', onPointerMove);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -77,7 +115,6 @@ export function DocumentTree({
   function onTreeKeyDown(e: React.KeyboardEvent) {
     if (renameNodeId || menuNodeId) return;
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    // Only when focus is inside the tree
     const root = treeRef.current;
     if (!root || !root.contains(document.activeElement)) return;
     e.preventDefault();
@@ -136,6 +173,57 @@ export function DocumentTree({
     }
   }
 
+  function resolvePosition(
+    overId: string,
+    overRect: { top: number; height: number },
+  ): TreeDropPosition {
+    const overNode = nodes.find((n) => n.id === overId);
+    if (!overNode) return 'after';
+    return inferDropPosition(overNode.type, pointerY.current, overRect);
+  }
+
+  function onDragOver(event: DragOverEvent) {
+    const { over } = event;
+    if (!over || !canWrite) {
+      setDropOverId(null);
+      setDropPosition(null);
+      return;
+    }
+    const overId = String(over.id);
+    const pos = resolvePosition(overId, {
+      top: over.rect.top,
+      height: over.rect.height,
+    });
+    setDropOverId(overId);
+    setDropPosition(pos);
+  }
+
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setDropOverId(null);
+    setDropPosition(null);
+    if (!canWrite || !over || !onDragMove) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
+    const pos = resolvePosition(overId, {
+      top: over.rect.top,
+      height: over.rect.height,
+    });
+    const plan = planTreeDrop(nodes, activeId, overId, pos);
+    if (!plan.ok) return;
+    onDragMove({
+      nodeId: plan.nodeId,
+      parentId: plan.parentId,
+      sortOrder: plan.sortOrder,
+    });
+  }
+
+  function onDragCancel() {
+    setDropOverId(null);
+    setDropPosition(null);
+  }
+
   function renderLevel(parentId: string | null, depth: number) {
     const children = childMap.get(parentId) ?? [];
     if (!children.length) return null;
@@ -161,10 +249,12 @@ export function DocumentTree({
               canWrite={canWrite}
               canUp={avail.canUp}
               canDown={avail.canDown}
+              dropHint={
+                dropOverId === n.id ? dropPosition : null
+              }
               onSelect={() => {
                 onSelect(n);
                 if (n.type === 'folder' && hasKids) {
-                  // single click opens folder expand if collapsed
                   if (collapsed) onToggleCollapse(n.id);
                 }
               }}
@@ -176,7 +266,9 @@ export function DocumentTree({
               }}
               onMoreClick={(e) => {
                 e.stopPropagation();
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const rect = (
+                  e.currentTarget as HTMLElement
+                ).getBoundingClientRect();
                 openMenu(n, rect.left, rect.bottom + 2);
               }}
               onDoubleClickTitle={() => {
@@ -204,15 +296,23 @@ export function DocumentTree({
   }
 
   return (
-    <div
-      ref={treeRef}
-      className="ws-tree-root"
-      role="tree"
-      tabIndex={0}
-      aria-label="文档树"
-      onKeyDown={onTreeKeyDown}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDragCancel={onDragCancel}
     >
-      {renderLevel(null, 0)}
-    </div>
+      <div
+        ref={treeRef}
+        className="ws-tree-root"
+        role="tree"
+        tabIndex={0}
+        aria-label="文档树"
+        onKeyDown={onTreeKeyDown}
+      >
+        {renderLevel(null, 0)}
+      </div>
+    </DndContext>
   );
 }

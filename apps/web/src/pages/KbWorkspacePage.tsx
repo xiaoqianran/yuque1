@@ -181,6 +181,7 @@ export function KbWorkspacePage() {
             onMoveRequest={(node) => ws.setMoveTarget(node)}
             onReorder={(node, dir) => void ws.reorderSibling(node, dir)}
             onDeleteRequest={(node) => ws.setDeleteTarget(node)}
+            onDragMove={(plan) => void ws.dragMoveNode(plan)}
             renameNodeId={ws.renameNodeId}
             onRenameNodeIdChange={ws.setRenameNodeId}
             onKbMenu={(action) => {
