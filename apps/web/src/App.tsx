@@ -13,9 +13,12 @@ function Shell({ children }: { children: React.ReactNode }) {
     <div className="app">
       <header className="header">
         <Link to="/" className="logo" aria-label="yuque1 首页">
-          yuque1
+          <span className="logo-mark" aria-hidden>
+            y
+          </span>
+          <span>yuque1</span>
         </Link>
-        <span className="badge">知识库</span>
+        <span className="badge">Knowledge</span>
         <span className="header-spacer" />
         {user && <UserMenu />}
       </header>
