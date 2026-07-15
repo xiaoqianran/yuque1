@@ -31,6 +31,7 @@ import {
 import {
   buildMoveParentOptions,
   collectAncestorIds,
+  collectParentIdsWithChildren,
   expandAncestorsInCollapsed,
   normalizeKbDescription,
   normalizeKbName,
@@ -332,6 +333,21 @@ export function KbWorkspacePage() {
     canWrite,
     save,
   ]);
+
+  // Ctrl/Cmd+S → manual save (block browser "Save Page")
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key !== 's' && e.key !== 'S') return;
+      e.preventDefault();
+      if (selected?.type !== 'doc' || !canWrite || saving || version == null) {
+        return;
+      }
+      void save({ auto: false });
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selected?.type, canWrite, saving, version, save]);
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
@@ -822,6 +838,28 @@ export function KbWorkspacePage() {
             </>
           )}
         </div>
+        {nodes.length > 0 && (
+          <div className="row tree-collapse-actions">
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() => setCollapsedIds(new Set())}
+              title="展开全部节点"
+            >
+              全部展开
+            </button>
+            <button
+              type="button"
+              className="btn ghost small"
+              onClick={() =>
+                setCollapsedIds(new Set(collectParentIdsWithChildren(nodes)))
+              }
+              title="折叠所有有子节点的项"
+            >
+              全部折叠
+            </button>
+          </div>
+        )}
         <div className="tree-scroll">
           {nodes.length === 0 ? (
             <StatePanel
@@ -914,6 +952,7 @@ export function KbWorkspacePage() {
                   className="btn primary small"
                   disabled={!canWrite || saving || version == null}
                   onClick={() => void save({ auto: false })}
+                  title="Ctrl/Cmd+S"
                 >
                   保存
                 </button>

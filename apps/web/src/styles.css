@@ -820,6 +820,17 @@ a:focus-visible {
   padding-right: 2px;
 }
 
+.tree-collapse-actions {
+  padding: 0 var(--space-1);
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.tree-collapse-actions .btn.ghost {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+}
+
 .editor-pane {
   display: flex;
   flex-direction: column;
