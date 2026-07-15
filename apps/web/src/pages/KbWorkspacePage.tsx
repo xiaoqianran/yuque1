@@ -4,6 +4,11 @@ import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
 import { StatePanel } from '../components/StatePanel';
+import {
+  buildMoveParentOptions,
+  normalizeRenameTitle,
+  normalizeSearchQuery,
+} from '../ui/treeOps';
 import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
 import { resolveViewPhase } from '../ui/viewState';
 
@@ -80,8 +85,17 @@ export function KbWorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [docLoading, setDocLoading] = useState(false);
   const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [searchQ, setSearchQ] = useState('');
+  const [searchHits, setSearchHits] = useState<PublicNode[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [moveParentId, setMoveParentId] = useState('');
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
+  const moveOptions = useMemo(
+    () => (selected ? buildMoveParentOptions(nodes, selected.id) : []),
+    [nodes, selected],
+  );
 
   const refreshTree = useCallback(async () => {
     const data = await treeApi.list(kbId);
@@ -108,9 +122,12 @@ export function KbWorkspacePage() {
 
   async function openNode(n: PublicNode) {
     setSelected(n);
+    setRenameTitle(n.title);
+    setMoveParentId(n.parentId ?? '');
     setConflict(null);
     setShare(null);
     setStatus(null);
+    setCopyHint(null);
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -223,10 +240,65 @@ export function KbWorkspacePage() {
       setBody('');
       setVersion(null);
       setShare(null);
+      setRenameTitle('');
       setStatus(`已删除「${selected.title}」`);
       await refreshTree();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '删除失败');
+    }
+  }
+
+  async function renameSelected() {
+    if (!selected) return;
+    const parsed = normalizeRenameTitle(renameTitle);
+    if (!parsed.ok) {
+      setError(parsed.message);
+      return;
+    }
+    try {
+      const updated = await treeApi.update(selected.id, parsed.title);
+      setSelected(updated);
+      setRenameTitle(updated.title);
+      setStatus(`已重命名为「${updated.title}」`);
+      setError(null);
+      await refreshTree();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '重命名失败');
+    }
+  }
+
+  async function moveSelected() {
+    if (!selected) return;
+    const parentId = moveParentId === '' ? null : moveParentId;
+    try {
+      const updated = await treeApi.move(selected.id, parentId);
+      setSelected(updated);
+      setMoveParentId(updated.parentId ?? '');
+      setStatus('已移动节点');
+      setError(null);
+      await refreshTree();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '移动失败');
+    }
+  }
+
+  async function runSearch() {
+    const parsed = normalizeSearchQuery(searchQ);
+    if (!parsed.ok) {
+      setError(parsed.message);
+      setSearchHits(null);
+      return;
+    }
+    setSearching(true);
+    setError(null);
+    try {
+      const data = await treeApi.search(kbId, parsed.q);
+      setSearchHits(data.items);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '搜索失败');
+      setSearchHits(null);
+    } finally {
+      setSearching(false);
     }
   }
 
@@ -291,10 +363,67 @@ export function KbWorkspacePage() {
           <h2>{kb.name}</h2>
         </div>
         <div className="tree-actions">
+          <div className="row">
+            <input
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              placeholder="搜索标题…"
+              aria-label="搜索节点标题"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void runSearch();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn secondary small"
+              disabled={searching}
+              onClick={() => void runSearch()}
+            >
+              {searching ? '…' : '搜索'}
+            </button>
+          </div>
+          {searchHits && (
+            <div className="search-hits" role="listbox" aria-label="搜索结果">
+              {searchHits.length === 0 ? (
+                <p className="hint">无匹配节点</p>
+              ) : (
+                searchHits.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    className="tree-item"
+                    role="option"
+                    onClick={() => void openNode(n)}
+                  >
+                    <span
+                      className={`tree-type ${n.type === 'folder' ? 'tree-type--folder' : 'tree-type--doc'}`}
+                      aria-hidden
+                    >
+                      {n.type === 'folder' ? 'F' : 'D'}
+                    </span>
+                    <span>{n.title}</span>
+                  </button>
+                ))
+              )}
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => {
+                  setSearchHits(null);
+                  setSearchQ('');
+                }}
+              >
+                清除搜索
+              </button>
+            </div>
+          )}
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="节点标题"
+            placeholder="新建节点标题"
             aria-label="新建节点标题"
           />
           <div className="row">
@@ -311,13 +440,48 @@ export function KbWorkspacePage() {
           </div>
           <p className="hint">新建挂在当前选中节点下（文档也可挂子节点）</p>
           {selected && (
-            <button
-              type="button"
-              className="btn secondary small danger-outline"
-              onClick={() => void deleteSelected()}
-            >
-              删除选中节点
-            </button>
+            <>
+              <label className="field-label">
+                重命名
+                <div className="row">
+                  <input
+                    value={renameTitle}
+                    onChange={(e) => setRenameTitle(e.target.value)}
+                    aria-label="节点新标题"
+                  />
+                  <button type="button" className="btn secondary small" onClick={() => void renameSelected()}>
+                    保存名
+                  </button>
+                </div>
+              </label>
+              <label className="field-label">
+                移动到
+                <div className="row">
+                  <select
+                    className="field-select"
+                    value={moveParentId}
+                    onChange={(e) => setMoveParentId(e.target.value)}
+                    aria-label="移动目标父节点"
+                  >
+                    {moveOptions.map((o) => (
+                      <option key={o.value || 'root'} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn secondary small" onClick={() => void moveSelected()}>
+                    移动
+                  </button>
+                </div>
+              </label>
+              <button
+                type="button"
+                className="btn secondary small danger-outline"
+                onClick={() => void deleteSelected()}
+              >
+                删除选中节点
+              </button>
+            </>
           )}
         </div>
         <div className="tree-scroll">
@@ -359,7 +523,7 @@ export function KbWorkspacePage() {
         {selected?.type === 'folder' && (
           <div className="card folder-panel">
             <h2>{selected.title}</h2>
-            <p className="muted">这是文件夹，没有正文。可在其下创建子文件夹或文档。</p>
+            <p className="muted">这是文件夹，没有正文。可在其下创建子文件夹或文档；左侧可重命名、移动或删除。</p>
           </div>
         )}
 
