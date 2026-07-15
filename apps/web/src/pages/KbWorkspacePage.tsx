@@ -21,6 +21,7 @@ import {
   siblingReorderAvailability,
   type SiblingReorderDirection,
 } from '../ui/treeOps';
+import { MarkdownView } from '../ui/markdown';
 import {
   expiresAtFromPreset,
   formatShareExpiry,
@@ -114,6 +115,7 @@ export function KbWorkspacePage() {
   const [kbSaving, setKbSaving] = useState(false);
   const [shareExpiryPreset, setShareExpiryPreset] =
     useState<ShareExpiryPreset>('never');
+  const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit');
   const [revisions, setRevisions] = useState<ContentRevisionBrief[] | null>(null);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
@@ -170,6 +172,7 @@ export function KbWorkspacePage() {
     setRevisions(null);
     setRevisionsOpen(false);
     setRevisionPreview(null);
+    setEditorMode('edit');
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -748,6 +751,24 @@ export function KbWorkspacePage() {
               <h2>{selected.title}</h2>
               <div className="row">
                 <span className="badge">v{version ?? '—'}</span>
+                <div className="seg-control" role="group" aria-label="编辑模式">
+                  <button
+                    type="button"
+                    className={`btn small ${editorMode === 'edit' ? 'primary' : 'secondary'}`}
+                    onClick={() => setEditorMode('edit')}
+                    aria-pressed={editorMode === 'edit'}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn small ${editorMode === 'preview' ? 'primary' : 'secondary'}`}
+                    onClick={() => setEditorMode('preview')}
+                    aria-pressed={editorMode === 'preview'}
+                  >
+                    预览
+                  </button>
+                </div>
                 <button type="button" className="btn primary small" onClick={() => void save()}>
                   保存
                 </button>
@@ -934,7 +955,7 @@ export function KbWorkspacePage() {
             )}
             {docLoading ? (
               <StatePanel phase="loading" title="加载正文" description="读取文档内容与版本…" />
-            ) : (
+            ) : editorMode === 'edit' ? (
               <textarea
                 className="editor"
                 value={body}
@@ -942,6 +963,12 @@ export function KbWorkspacePage() {
                 placeholder="在此编写 Markdown 正文…"
                 spellCheck={false}
                 aria-label="文档正文"
+              />
+            ) : (
+              <MarkdownView
+                source={body}
+                className="md-preview editor-preview"
+                emptyLabel="（空文档 — 切换到编辑开始写）"
               />
             )}
           </>
