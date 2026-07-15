@@ -34,6 +34,7 @@ export function KbWorkspacePage() {
   const importZipInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [findRequestId, setFindRequestId] = useState(0);
+  const [findQuery, setFindQuery] = useState('');
 
   const ws = useKnowledgeWorkspace(kbId);
 
@@ -187,6 +188,17 @@ export function KbWorkspacePage() {
             searchHits={ws.searchHits}
             onClearSearch={ws.clearSearch}
             onSelect={(n) => void ws.handleSelect(n)}
+            onSearchHitSelect={(n) => {
+              const q = ws.searchQ.trim();
+              setFindQuery(q);
+              if (n.type === 'doc' && q) {
+                ws.setEditorMode('edit');
+                setFindRequestId((x) => x + 1);
+              } else {
+                setFindQuery('');
+              }
+              void ws.handleSelect(n);
+            }}
             onToggleCollapse={ws.toggleCollapse}
             onCreate={(type) => void ws.createNode(type)}
             onCreateUnder={(type, ctx) =>
@@ -346,6 +358,7 @@ export function KbWorkspacePage() {
                       break;
                     case 'find':
                       ws.setEditorMode('edit');
+                      setFindQuery('');
                       setFindRequestId((n) => n + 1);
                       break;
                     case 'history':
@@ -436,6 +449,8 @@ export function KbWorkspacePage() {
                             readOnly={!ws.canWrite}
                             onSave={() => void ws.save({ auto: false })}
                             findRequestId={findRequestId}
+                            findQuery={findQuery}
+                            docLoading={ws.docLoading}
                           />
                         ) : (
                           <MarkdownPreview

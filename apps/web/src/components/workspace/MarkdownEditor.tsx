@@ -4,6 +4,7 @@ import type { EditorView } from '@codemirror/view';
 import {
   buildMarkdownEditorExtensions,
   openEditorSearch,
+  openEditorSearchWithQuery,
 } from '../../ui/editorExtensions';
 
 type Props = {
@@ -13,6 +14,10 @@ type Props = {
   onSave?: () => void;
   /** Increment to open the search panel (e.g. from 更多 → 查找). */
   findRequestId?: number;
+  /** Optional query when opening from sidebar search. */
+  findQuery?: string;
+  /** When true, wait until false before applying find (doc load). */
+  docLoading?: boolean;
   className?: string;
   ariaLabel?: string;
 };
@@ -23,6 +28,8 @@ export function MarkdownEditor({
   readOnly = false,
   onSave,
   findRequestId = 0,
+  findQuery = '',
+  docLoading = false,
   className,
   ariaLabel = '文档正文',
 }: Props) {
@@ -34,12 +41,22 @@ export function MarkdownEditor({
   );
 
   useEffect(() => {
-    if (!findRequestId) return;
+    if (!findRequestId || docLoading) return;
     const view = viewRef.current;
     if (!view) return;
-    view.focus();
-    openEditorSearch(view);
-  }, [findRequestId]);
+    // Defer until CM has applied latest doc value
+    const t = window.setTimeout(() => {
+      const v = viewRef.current;
+      if (!v) return;
+      const q = findQuery.trim();
+      if (q) openEditorSearchWithQuery(v, q);
+      else {
+        v.focus();
+        openEditorSearch(v);
+      }
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [findRequestId, findQuery, docLoading, value]);
 
   return (
     <div className={className ?? 'ws-cm-wrap'} aria-label={ariaLabel}>

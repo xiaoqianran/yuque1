@@ -1,10 +1,13 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import {
+  SearchQuery,
+  findNext,
   highlightSelectionMatches,
   openSearchPanel,
   search,
   searchKeymap,
+  setSearchQuery,
 } from '@codemirror/search';
 import type { Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
@@ -57,7 +60,46 @@ export function openEditorSearch(view: EditorView | null | undefined): boolean {
   return openSearchPanel(view);
 }
 
+/**
+ * Build a case-insensitive SearchQuery for sidebar → editor jump.
+ * Pure helper for unit tests.
+ */
+export function buildSidebarSearchQuery(raw: string): SearchQuery | null {
+  const search = raw.trim();
+  if (!search) return null;
+  return new SearchQuery({
+    search,
+    caseSensitive: false,
+    literal: true,
+  });
+}
+
+/**
+ * Open search panel, optionally set query and jump to first match.
+ * Used when opening a document from sidebar full-text search results.
+ */
+export function openEditorSearchWithQuery(
+  view: EditorView | null | undefined,
+  rawQuery: string,
+): boolean {
+  if (!view) return false;
+  openSearchPanel(view);
+  const q = buildSidebarSearchQuery(rawQuery);
+  if (q) {
+    view.dispatch({ effects: setSearchQuery.of(q) });
+    findNext(view);
+  }
+  view.focus();
+  return true;
+}
+
 /** Extension package markers for unit tests (shipped search wiring). */
 export function editorSearchFeatures(): string[] {
-  return ['search', 'searchKeymap', 'highlightSelectionMatches', 'Mod-f'];
+  return [
+    'search',
+    'searchKeymap',
+    'highlightSelectionMatches',
+    'Mod-f',
+    'sidebar-jump',
+  ];
 }
