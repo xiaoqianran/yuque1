@@ -31,6 +31,7 @@ export function KbWorkspacePage() {
   const { kbId = '' } = useParams();
   const navigate = useNavigate();
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importZipInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   const ws = useKnowledgeWorkspace(kbId);
@@ -147,6 +148,19 @@ export function KbWorkspacePage() {
 
   return (
     <WorkspaceShell focusMode={ws.focusMode}>
+      <input
+        ref={importZipInputRef}
+        type="file"
+        accept=".zip,application/zip"
+        className="sr-only"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) void ws.importKbZip(f);
+        }}
+      />
       <div className="ws-body">
         {!ws.focusMode && ws.mobileSidebarOpen && (
           <button
@@ -195,6 +209,14 @@ export function KbWorkspacePage() {
                   break;
                 case 'export-zip':
                   void ws.exportKbZip();
+                  break;
+                case 'import-zip':
+                  if (!ws.canWrite) {
+                    ws.setStatus('只读成员无法导入');
+                    break;
+                  }
+                  if (ws.importingZip) break;
+                  importZipInputRef.current?.click();
                   break;
                 case 'trash':
                   ws.setTrashOpen(true);
