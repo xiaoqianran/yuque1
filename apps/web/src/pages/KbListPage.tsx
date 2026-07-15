@@ -127,6 +127,7 @@ export function KbListPage() {
     <div className="page">
       <div className="page-head">
         <div>
+          <p className="page-kicker">Workspace</p>
           <h1>我的知识库</h1>
           <p className="muted">
             {user?.nickname}
@@ -148,9 +149,10 @@ export function KbListPage() {
             aria-label="知识库名称"
           />
           <button type="submit" className="btn primary" disabled={creating || !name.trim()}>
-            {creating ? '创建中…' : '创建'}
+            {creating ? '创建中…' : '创建知识库'}
           </button>
         </form>
+        <p className="create-bar-hint">创建 后即可搭建文档树、协作成员与外链分享。</p>
         {inlineActionError && (
           <p className="form-msg form-msg--error" role="alert">
             {inlineActionError}
@@ -179,69 +181,92 @@ export function KbListPage() {
         <StatePanel
           phase="empty"
           title="还没有知识库"
-          description="在上方输入名称并点击「创建」，即可开始写文档。"
+          description="在上方输入名称并点击「创建知识库」，即可开始写文档。"
         />
       )}
 
       {phase === 'ready' && (
         <ul className="kb-list">
-          {items.map((kb) => (
-            <li key={kb.id}>
-              {renamingId === kb.id ? (
-                <form
-                  className="kb-item-row kb-rename-row"
-                  onSubmit={(ev) => void submitRename(kb, ev)}
-                >
-                  <input
-                    value={renameDraft}
-                    onChange={(e) => setRenameDraft(e.target.value)}
-                    maxLength={128}
-                    aria-label="新知识库名称"
-                    autoFocus
-                  />
-                  <button type="submit" className="btn primary small" disabled={renamingBusy}>
-                    {renamingBusy ? '保存中…' : '保存'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn secondary small"
-                    disabled={renamingBusy}
-                    onClick={(ev) => cancelRename(ev)}
+          {items.map((kb) => {
+            const initial = (kb.name.trim()[0] || 'K').toUpperCase();
+            return (
+              <li key={kb.id}>
+                {renamingId === kb.id ? (
+                  <form
+                    className="kb-item-row kb-rename-row"
+                    onSubmit={(ev) => void submitRename(kb, ev)}
                   >
-                    取消
-                  </button>
-                </form>
-              ) : (
-                <div className="kb-item-row">
-                  <Link to={`/kbs/${kb.id}`} className="kb-item">
-                    <strong>{kb.name}</strong>
-                    <span className="role-pill">{roleLabel(kb.role)}</span>
-                  </Link>
-                  {canWriteKb(kb.role) && (
-                    <button
-                      type="button"
-                      className="btn secondary small"
-                      onClick={(ev) => startRename(kb, ev)}
-                      aria-label={`重命名知识库 ${kb.name}`}
-                    >
-                      重命名
-                    </button>
-                  )}
-                  {kb.role === 'owner' && (
-                    <button
-                      type="button"
-                      className="btn secondary small danger-outline"
-                      disabled={deletingId === kb.id}
-                      onClick={(ev) => void onDeleteKb(kb, ev)}
-                      aria-label={`删除知识库 ${kb.name}`}
-                    >
-                      {deletingId === kb.id ? '删除中…' : '删除'}
-                    </button>
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
+                    <input
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      maxLength={128}
+                      aria-label="新知识库名称"
+                      autoFocus
+                    />
+                    <div className="kb-item-actions">
+                      <button type="submit" className="btn primary small" disabled={renamingBusy}>
+                        {renamingBusy ? '保存中…' : '保存'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        disabled={renamingBusy}
+                        onClick={(ev) => cancelRename(ev)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="kb-item-row">
+                    <Link to={`/kbs/${kb.id}`} className="kb-item">
+                      <span className="kb-item-icon" aria-hidden>
+                        {initial}
+                      </span>
+                      <strong>{kb.name}</strong>
+                      <div className="kb-item-meta">
+                        <span
+                          className={`role-pill role-pill--${kb.role}`}
+                        >
+                          {roleLabel(kb.role)}
+                        </span>
+                        {kb.description ? (
+                          <span className="muted" style={{ fontSize: '12px' }}>
+                            {kb.description.length > 48
+                              ? `${kb.description.slice(0, 48)}…`
+                              : kb.description}
+                          </span>
+                        ) : null}
+                      </div>
+                    </Link>
+                    <div className="kb-item-actions">
+                      {canWriteKb(kb.role) && (
+                        <button
+                          type="button"
+                          className="btn secondary small"
+                          onClick={(ev) => startRename(kb, ev)}
+                          aria-label={`重命名知识库 ${kb.name}`}
+                        >
+                          重命名
+                        </button>
+                      )}
+                      {kb.role === 'owner' && (
+                        <button
+                          type="button"
+                          className="btn secondary small danger-outline"
+                          disabled={deletingId === kb.id}
+                          onClick={(ev) => void onDeleteKb(kb, ev)}
+                          aria-label={`删除知识库 ${kb.name}`}
+                        >
+                          {deletingId === kb.id ? '删除中…' : '删除'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
