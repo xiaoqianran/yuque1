@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.7
+  version: 0.1.8
   contact:
     name: yuque1
 
@@ -153,6 +153,32 @@ paths:
                 $ref: '#/components/schemas/SuccessEnvelopeUser'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Auth]
+      summary: 更新当前用户资料
+      description: |
+        MVP 支持 `nickname`（trim 后 1–64 字）。
+        写入 audit `user.update_profile`。
+      operationId: updateMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /kbs:
     get:
@@ -1111,6 +1137,16 @@ components:
           type: string
           maxLength: 64
           description: 仅新用户注册时可选
+
+    UpdateMeRequest:
+      type: object
+      required: [nickname]
+      properties:
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 展示昵称；服务端 trim 后校验非空
 
     CreateKbRequest:
       type: object
