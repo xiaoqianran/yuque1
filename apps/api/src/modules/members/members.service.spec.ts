@@ -94,12 +94,23 @@ function mockPrisma(store: Store) {
         where,
         data,
       }: {
-        where: { id: string };
+        where: {
+          id?: string;
+          knowledgeBaseId_userId?: { knowledgeBaseId: string; userId: string };
+        };
         data: { role: string };
       }) => {
-        const m = store.members.find((x) => x.id === where.id)!;
+        let m = where.id
+          ? store.members.find((x) => x.id === where.id)
+          : store.members.find(
+              (x) =>
+                x.knowledgeBaseId ===
+                  where.knowledgeBaseId_userId!.knowledgeBaseId &&
+                x.userId === where.knowledgeBaseId_userId!.userId,
+            );
+        if (!m) throw new Error('member not found');
         m.role = data.role;
-        const user = store.users.find((u) => u.id === m.userId)!;
+        const user = store.users.find((u) => u.id === m!.userId)!;
         return {
           ...m,
           user: { mobileE164: user.mobileE164, nickname: user.nickname },
@@ -252,5 +263,43 @@ describe('MembersService', () => {
     assert.equal(r.ok, true);
     if (!r.ok) return;
     assert.equal(r.data.role, 'editor');
+  });
+
+  it('transfers owner in one step', async () => {
+    store.members.push({
+      id: 'm2',
+      knowledgeBaseId: 'kb1',
+      userId: 'u2',
+      role: 'editor',
+      createdAt: new Date(),
+    });
+    // extend mock for transaction + knowledgeBase
+    const base = mockPrisma(store) as any;
+    base.knowledgeBase = {
+      update: async ({ data }: { data: { ownerUserId: string } }) => {
+        (store as any).ownerUserId = data.ownerUserId;
+        return { id: 'kb1', ...data };
+      },
+    };
+    base.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => fn(base);
+    svc = new MembersService(base as never);
+
+    const r = await svc.transferOwner('u1', 'kb1', 'u2');
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.data.role, 'owner');
+    assert.equal(r.data.userId, 'u2');
+    const u1 = store.members.find((m) => m.userId === 'u1')!;
+    const u2 = store.members.find((m) => m.userId === 'u2')!;
+    assert.equal(u1.role, 'editor');
+    assert.equal(u2.role, 'owner');
+    assert.equal((store as any).ownerUserId, 'u2');
+  });
+
+  it('rejects transfer to non-member', async () => {
+    const r = await svc.transferOwner('u1', 'kb1', 'u2');
+    assert.equal(r.ok, false);
+    if (r.ok) return;
+    assert.equal(r.http, 404);
   });
 });

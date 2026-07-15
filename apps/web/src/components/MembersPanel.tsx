@@ -6,9 +6,11 @@ import { roleLabel } from '../ui/viewState';
 
 type Props = {
   kb: PublicKb;
+  /** Called after ownership transfer so parent can refresh kb.role */
+  onOwnershipTransferred?: () => void;
 };
 
-export function MembersPanel({ kb }: Props) {
+export function MembersPanel({ kb, onOwnershipTransferred }: Props) {
   const [items, setItems] = useState<KbMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +76,28 @@ export function MembersPanel({ kb }: Props) {
     }
   }
 
+  async function onTransfer(userId: string, nickname: string) {
+    if (!isOwner) return;
+    if (
+      !window.confirm(
+        `确定将 owner 转让给「${nickname}」吗？\n\n转让后你将成为可编辑成员，对方成为唯一 owner。`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      await membersApi.transferOwner(kb.id, userId);
+      await load();
+      onOwnershipTransferred?.();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '转让失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="members-panel" aria-label="知识库成员">
       <h3 className="members-title">成员</h3>
@@ -106,7 +130,16 @@ export function MembersPanel({ kb }: Props) {
                   </select>
                   <button
                     type="button"
+                    className="btn secondary small"
+                    disabled={busy}
+                    onClick={() => void onTransfer(m.userId, m.nickname)}
+                  >
+                    转让 owner
+                  </button>
+                  <button
+                    type="button"
                     className="btn secondary small danger-outline"
+                    disabled={busy}
                     onClick={() => void onRemove(m.userId, m.nickname)}
                   >
                     移除
@@ -139,7 +172,7 @@ export function MembersPanel({ kb }: Props) {
               <option value="reader">只读</option>
             </select>
             <button type="submit" className="btn primary small" disabled={busy || !mobile.trim()}>
-              {busy ? '添加中…' : '添加'}
+              {busy ? '处理中…' : '添加'}
             </button>
           </div>
         </form>

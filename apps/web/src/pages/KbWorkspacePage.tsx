@@ -436,7 +436,12 @@ export function KbWorkspacePage() {
               </button>
             </div>
           )}
-          <MembersPanel kb={kb} />
+          <MembersPanel
+            kb={kb}
+            onOwnershipTransferred={() => {
+              void loadWorkspace();
+            }}
+          />
         </div>
         <div className="tree-actions">
           <div className="row">

@@ -15,7 +15,7 @@ import { AuthService } from '../auth/auth.service';
 import { readSid } from '../auth/cookies';
 import { MembersService } from './members.service';
 
-@Controller('kbs/:kbId/members')
+@Controller('kbs/:kbId')
 export class MembersController {
   constructor(
     private readonly auth: AuthService,
@@ -48,7 +48,7 @@ export class MembersController {
     return fail(result.code, result.message, result.details ?? null);
   }
 
-  @Get()
+  @Get('members')
   async list(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -61,7 +61,7 @@ export class MembersController {
     return ok(result.data);
   }
 
-  @Post()
+  @Post('members')
   async add(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -76,7 +76,7 @@ export class MembersController {
     return ok(result.data);
   }
 
-  @Patch(':userId')
+  @Patch('members/:userId')
   async update(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -96,7 +96,7 @@ export class MembersController {
     return ok(result.data);
   }
 
-  @Delete(':userId')
+  @Delete('members/:userId')
   async remove(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -108,5 +108,23 @@ export class MembersController {
     const result = await this.members.remove(userId, kbId, targetUserId);
     if (!result.ok) return this.failResult(res, result);
     return ok(null);
+  }
+
+  @Post('transfer-owner')
+  async transferOwner(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('kbId') kbId: string,
+    @Body() body: { userId?: string },
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.members.transferOwner(
+      userId,
+      kbId,
+      body?.userId ?? '',
+    );
+    if (!result.ok) return this.failResult(res, result);
+    return ok(result.data);
   }
 }

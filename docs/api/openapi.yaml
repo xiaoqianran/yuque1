@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.3
+  version: 0.1.4
   contact:
     name: yuque1
 
@@ -361,6 +361,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessEnvelopeEmpty'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /kbs/{kbId}/transfer-owner:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Members]
+      summary: 转让知识库 owner
+      description: |
+        仅当前 owner。目标 `userId` 必须已是本库成员且非 owner。
+        单事务：旧 owner → editor；目标 → owner；同步 `knowledge_bases.owner_user_id`；审计。
+      operationId: transferKbOwner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferOwnerRequest'
+      responses:
+        '200':
+          description: 转让成功；返回新 owner 成员信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1067,6 +1099,15 @@ components:
       properties:
         role:
           $ref: '#/components/schemas/MemberRoleAssignable'
+      additionalProperties: false
+
+    TransferOwnerRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          $ref: '#/components/schemas/Ulid'
+          description: 新 owner 的用户 ID（须已是成员）
       additionalProperties: false
 
     CreateNodeRequest:
