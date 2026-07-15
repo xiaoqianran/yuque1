@@ -1,6 +1,7 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { RequireAuth } from './components/RequireAuth';
+import { UserMenu } from './components/UserMenu';
 import { KbListPage } from './pages/KbListPage';
 import { KbWorkspacePage } from './pages/KbWorkspacePage';
 import { LoginPage } from './pages/LoginPage';
@@ -16,11 +17,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </Link>
         <span className="badge">知识库</span>
         <span className="header-spacer" />
-        {user && (
-          <span className="header-user" title={user.mobileE164}>
-            {user.nickname}
-          </span>
-        )}
+        {user && <UserMenu />}
       </header>
       <main className="main-fluid">{children}</main>
     </div>

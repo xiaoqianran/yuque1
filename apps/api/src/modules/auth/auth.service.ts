@@ -90,6 +90,77 @@ export class AuthService {
     return user ? this.toPublic(user) : null;
   }
 
+  /**
+   * Update current user profile fields (MVP: nickname).
+   */
+  async updateProfile(
+    userId: string,
+    input: { nickname?: string },
+  ): Promise<
+    | { ok: true; data: PublicUser }
+    | { ok: false; code: string; message: string; http: number }
+  > {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+    if (!user) {
+      return { ok: false, code: 'NOT_FOUND', message: '用户不存在', http: 404 };
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(input, 'nickname')) {
+      return {
+        ok: false,
+        code: 'VALIDATION_ERROR',
+        message: '须提供 nickname',
+        http: 400,
+      };
+    }
+
+    const nick = (input.nickname ?? '').trim();
+    if (!nick) {
+      return {
+        ok: false,
+        code: 'VALIDATION_ERROR',
+        message: '昵称不能为空',
+        http: 400,
+      };
+    }
+    if (nick.length > 64) {
+      return {
+        ok: false,
+        code: 'VALIDATION_ERROR',
+        message: '昵称不超过 64 字',
+        http: 400,
+      };
+    }
+
+    if (nick === user.nickname) {
+      return { ok: true, data: this.toPublic(user) };
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { nickname: nick },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        actorUserId: userId,
+        action: 'user.update_profile',
+        resourceType: 'user',
+        resourceId: userId,
+        metadata: {
+          fields: ['nickname'],
+          from: user.nickname,
+          to: nick,
+        },
+      },
+    });
+
+    return { ok: true, data: this.toPublic(updated) };
+  }
+
   async logout(sid: string | undefined): Promise<void> {
     if (sid) await this.sessions.destroy(sid);
   }
