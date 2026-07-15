@@ -408,6 +408,74 @@ export class TreeService {
       };
     }
 
+    await this.hardDeleteSoftNode(userId, node);
+    return { ok: true, data: null };
+  }
+
+  /**
+   * Empty KB trash: repeatedly hard-delete soft-deleted leaves until none remain.
+   * Returns how many nodes were purged.
+   */
+  async emptyTrash(
+    userId: string,
+    kbId: string,
+  ): Promise<ServiceResult<{ purgedCount: number }>> {
+    const m = await this.membership(kbId, userId);
+    if (!m) return this.notFound();
+    if (!this.canWrite(m.role)) return this.notFound();
+
+    let purgedCount = 0;
+    // Soft-deleted trees are finite; leaf-first passes clear deepest first.
+    for (let round = 0; round < 500; round++) {
+      const soft = await this.prisma.treeNode.findMany({
+        where: { knowledgeBaseId: kbId, deletedAt: { not: null } },
+        orderBy: [{ deletedAt: 'desc' }],
+        take: 200,
+      });
+      if (soft.length === 0) break;
+
+      const leaves: typeof soft = [];
+      for (const n of soft) {
+        const childCount = await this.prisma.treeNode.count({
+          where: { parentId: n.id },
+        });
+        if (childCount === 0) leaves.push(n);
+      }
+      if (leaves.length === 0) {
+        // All remaining soft nodes still have children (unexpected cycle/live kids)
+        break;
+      }
+      for (const leaf of leaves) {
+        await this.hardDeleteSoftNode(userId, leaf);
+        purgedCount += 1;
+      }
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        id: ulid(),
+        actorUserId: userId,
+        action: 'kb.trash.empty',
+        resourceType: 'knowledge_base',
+        resourceId: kbId,
+        metadata: { purgedCount },
+      },
+    });
+
+    return { ok: true, data: { purgedCount } };
+  }
+
+  /** Hard-delete one soft-deleted node + related content (caller enforces leaf). */
+  private async hardDeleteSoftNode(
+    userId: string,
+    node: {
+      id: string;
+      knowledgeBaseId: string;
+      title: string;
+      type: string;
+    },
+  ): Promise<void> {
+    const nodeId = node.id;
     await this.prisma.$transaction(async (tx) => {
       await tx.shareLink.deleteMany({ where: { nodeId } });
       await tx.contentRevision.deleteMany({ where: { nodeId } });
@@ -428,8 +496,6 @@ export class TreeService {
         },
       });
     });
-
-    return { ok: true, data: null };
   }
 
   /**
