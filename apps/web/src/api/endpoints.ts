@@ -124,4 +124,9 @@ export const membersApi = {
     }),
   remove: (kbId: string, userId: string) =>
     apiRequest<null>(`/kbs/${kbId}/members/${userId}`, { method: 'DELETE' }),
+  transferOwner: (kbId: string, userId: string) =>
+    apiRequest<KbMember>(`/kbs/${kbId}/transfer-owner`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
 };

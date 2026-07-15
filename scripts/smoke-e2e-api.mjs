@@ -250,6 +250,36 @@ async function main() {
   }
   console.log('    members list ok (owner+editor)');
 
+  // 13) A transfers owner to B
+  const bUserId = r.json.data.items.find((m) => m.role === 'editor')?.userId;
+  if (!bUserId) throw new Error('missing editor userId for transfer');
+  r = await a.req('POST', `/kbs/${kbId}/transfer-owner`, { userId: bUserId });
+  assertOk('transfer owner', r);
+  if (r.json.data?.role !== 'owner' || r.json.data?.userId !== bUserId) {
+    throw new Error(`transfer owner bad payload: ${JSON.stringify(r.json)}`);
+  }
+  console.log('    ownership transferred to B');
+
+  // 14) B is owner: can list members; A is editor
+  r = await b.req('GET', `/kbs/${kbId}/members`);
+  assertOk('B list members as owner', r);
+  const after = r.json.data?.items ?? [];
+  const aRole = after.find((m) => m.mobileE164 === mobileA)?.role;
+  const bRole = after.find((m) => m.mobileE164 === mobileB)?.role;
+  if (aRole !== 'editor' || bRole !== 'owner') {
+    throw new Error(`post-transfer roles A=${aRole} B=${bRole}`);
+  }
+  console.log('    post-transfer roles ok');
+
+  // 15) A (now editor) cannot transfer
+  r = await a.req('POST', `/kbs/${kbId}/transfer-owner`, { userId: bUserId });
+  if (r.status !== 404 || r.json.success) {
+    throw new Error(
+      `A transfer should 404 after demotion: ${r.status} ${JSON.stringify(r.json)}`,
+    );
+  }
+  console.log('    demoted A cannot transfer (404)');
+
   console.log('==> BUSINESS E2E SMOKE PASSED');
 }
 
