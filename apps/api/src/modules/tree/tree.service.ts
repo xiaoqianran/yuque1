@@ -95,6 +95,7 @@ export class TreeService {
     kbId: string,
     q: string,
     limit = 50,
+    scope: 'title' | 'content' | 'all' = 'all',
   ): Promise<ServiceResult<{ items: PublicNode[] }>> {
     const m = await this.membership(kbId, userId);
     if (!m) return this.notFound();
@@ -108,16 +109,50 @@ export class TreeService {
         http: 400,
       };
     }
+    const sc =
+      scope === 'title' || scope === 'content' || scope === 'all'
+        ? scope
+        : 'all';
     const take = Math.min(100, Math.max(1, limit));
-    const rows = await this.prisma.treeNode.findMany({
-      where: {
-        knowledgeBaseId: kbId,
-        deletedAt: null,
-        title: { contains: query, mode: 'insensitive' },
-      },
-      orderBy: [{ updatedAt: 'desc' }],
-      take,
-    });
+
+    type Row = Awaited<
+      ReturnType<typeof this.prisma.treeNode.findMany>
+    >[number];
+    const byId = new Map<string, Row>();
+
+    if (sc === 'title' || sc === 'all') {
+      const titleRows = await this.prisma.treeNode.findMany({
+        where: {
+          knowledgeBaseId: kbId,
+          deletedAt: null,
+          title: { contains: query, mode: 'insensitive' },
+        },
+        orderBy: [{ updatedAt: 'desc' }],
+        take,
+      });
+      for (const r of titleRows) byId.set(r.id, r);
+    }
+
+    if (sc === 'content' || sc === 'all') {
+      const contentRows = await this.prisma.treeNode.findMany({
+        where: {
+          knowledgeBaseId: kbId,
+          deletedAt: null,
+          type: 'doc',
+          content: {
+            bodyMd: { contains: query, mode: 'insensitive' },
+          },
+        },
+        orderBy: [{ updatedAt: 'desc' }],
+        take,
+      });
+      for (const r of contentRows) byId.set(r.id, r);
+    }
+
+    const merged = [...byId.values()].sort(
+      (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+    );
+    const rows = merged.slice(0, take);
     return { ok: true, data: { items: rows.map((r) => this.toPublic(r)) } };
   }
 

@@ -95,14 +95,20 @@ export class TreeController {
     @Param('kbId') kbId: string,
     @Query('q') q?: string,
     @Query('limit') limit?: string,
+    @Query('scope') scope?: string,
   ) {
     const userId = await this.requireUser(req, res);
     if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const sc =
+      scope === 'title' || scope === 'content' || scope === 'all'
+        ? scope
+        : 'all';
     const result = await this.tree.search(
       userId,
       kbId,
       q ?? '',
       limit ? Number(limit) : 50,
+      sc,
     );
     if (!result.ok) return this.failResult(res, result);
     return ok(result.data);

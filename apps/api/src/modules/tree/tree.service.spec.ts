@@ -48,13 +48,17 @@ function mockPrisma(store: Store) {
       findMany: async ({
         where,
         take,
+        orderBy,
       }: {
         where: {
           knowledgeBaseId?: string;
           deletedAt?: null | { not: null };
           title?: { contains: string; mode: string };
+          type?: string;
+          content?: { bodyMd?: { contains: string; mode: string } };
         };
         take?: number;
+        orderBy?: unknown;
       }) => {
         let rows = store.nodes.filter((n) => {
           if (where.knowledgeBaseId && n.knowledgeBaseId !== where.knowledgeBaseId) {
@@ -69,13 +73,32 @@ function mockPrisma(store: Store) {
           ) {
             return false;
           }
+          if (where.type && n.type !== where.type) return false;
           return true;
         });
         if (where.title?.contains) {
           const q = where.title.contains.toLowerCase();
           rows = rows.filter((n) => n.title.toLowerCase().includes(q));
         }
-        rows = rows.sort((a, b) => a.sortOrder - b.sortOrder);
+        if (where.content?.bodyMd?.contains) {
+          const q = where.content.bodyMd.contains.toLowerCase();
+          rows = rows.filter((n) => {
+            const c = store.contents.find((x) => x.nodeId === n.id);
+            return !!c && c.bodyMd.toLowerCase().includes(q);
+          });
+        }
+        if (
+          Array.isArray(orderBy) &&
+          orderBy[0] &&
+          typeof orderBy[0] === 'object' &&
+          'updatedAt' in (orderBy[0] as object)
+        ) {
+          rows = rows.sort(
+            (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+          );
+        } else {
+          rows = rows.sort((a, b) => a.sortOrder - b.sortOrder);
+        }
         if (take != null) rows = rows.slice(0, take);
         return rows;
       },
@@ -274,6 +297,44 @@ describe('TreeService', () => {
     if (!search.ok) return;
     assert.equal(search.data.items.length, 1);
     assert.equal(search.data.items[0].title, 'Beta Note');
+  });
+
+  it('searches document body with scope=content and all', async () => {
+    const a = await svc.create('u1', 'kb1', { type: 'doc', title: '无关键词标题' });
+    assert.equal(a.ok, true);
+    if (!a.ok) return;
+    store.contents.find((c) => c.nodeId === a.data.id)!.bodyMd =
+      '这里有独特词 UNIQUE_TOKEN_XYZ 在正文';
+    await svc.create('u1', 'kb1', { type: 'doc', title: 'UNIQUE_TOKEN_XYZ 在标题' });
+
+    const byContent = await svc.search(
+      'u1',
+      'kb1',
+      'UNIQUE_TOKEN_XYZ',
+      50,
+      'content',
+    );
+    assert.equal(byContent.ok, true);
+    if (!byContent.ok) return;
+    assert.equal(byContent.data.items.length, 1);
+    assert.equal(byContent.data.items[0].id, a.data.id);
+
+    const byTitle = await svc.search(
+      'u1',
+      'kb1',
+      'UNIQUE_TOKEN_XYZ',
+      50,
+      'title',
+    );
+    assert.equal(byTitle.ok, true);
+    if (!byTitle.ok) return;
+    assert.equal(byTitle.data.items.length, 1);
+    assert.equal(byTitle.data.items[0].title, 'UNIQUE_TOKEN_XYZ 在标题');
+
+    const all = await svc.search('u1', 'kb1', 'UNIQUE_TOKEN_XYZ', 50, 'all');
+    assert.equal(all.ok, true);
+    if (!all.ok) return;
+    assert.equal(all.data.items.length, 2);
   });
 
   it('rejects delete when children exist', async () => {
