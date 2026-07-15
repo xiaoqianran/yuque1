@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { StatePanel } from '../components/StatePanel';
@@ -33,6 +33,7 @@ export function KbWorkspacePage() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const importZipInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const [findRequestId, setFindRequestId] = useState(0);
 
   const ws = useKnowledgeWorkspace(kbId);
 
@@ -343,6 +344,10 @@ export function KbWorkspacePage() {
                     case 'duplicate':
                       if (ws.selected) void ws.duplicateDocument(ws.selected);
                       break;
+                    case 'find':
+                      ws.setEditorMode('edit');
+                      setFindRequestId((n) => n + 1);
+                      break;
                     case 'history':
                       void ws.loadRevisions();
                       break;
@@ -430,6 +435,7 @@ export function KbWorkspacePage() {
                             onChange={ws.setBody}
                             readOnly={!ws.canWrite}
                             onSave={() => void ws.save({ auto: false })}
+                            findRequestId={findRequestId}
                           />
                         ) : (
                           <MarkdownPreview

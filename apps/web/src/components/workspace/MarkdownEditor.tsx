@@ -1,14 +1,18 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { markdown } from '@codemirror/lang-markdown';
-import { EditorView, keymap } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import type { EditorView } from '@codemirror/view';
+import {
+  buildMarkdownEditorExtensions,
+  openEditorSearch,
+} from '../../ui/editorExtensions';
 
 type Props = {
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
   onSave?: () => void;
+  /** Increment to open the search panel (e.g. from 更多 → 查找). */
+  findRequestId?: number;
   className?: string;
   ariaLabel?: string;
 };
@@ -18,32 +22,24 @@ export function MarkdownEditor({
   onChange,
   readOnly = false,
   onSave,
+  findRequestId = 0,
   className,
   ariaLabel = '文档正文',
 }: Props) {
-  const extensions = useMemo(() => {
-    const saveKey = keymap.of([
-      {
-        key: 'Mod-s',
-        run: () => {
-          onSave?.();
-          return true;
-        },
-      },
-    ]);
-    return [
-      markdown(),
-      history(),
-      EditorView.lineWrapping,
-      keymap.of([...defaultKeymap, ...historyKeymap]),
-      saveKey,
-      EditorView.theme({
-        '&': { height: '100%' },
-        '.cm-scroller': { overflow: 'auto' },
-      }),
-      EditorView.editable.of(!readOnly),
-    ];
-  }, [onSave, readOnly]);
+  const viewRef = useRef<EditorView | null>(null);
+
+  const extensions = useMemo(
+    () => buildMarkdownEditorExtensions({ readOnly, onSave }),
+    [onSave, readOnly],
+  );
+
+  useEffect(() => {
+    if (!findRequestId) return;
+    const view = viewRef.current;
+    if (!view) return;
+    view.focus();
+    openEditorSearch(view);
+  }, [findRequestId]);
 
   return (
     <div className={className ?? 'ws-cm-wrap'} aria-label={ariaLabel}>
@@ -55,14 +51,18 @@ export function MarkdownEditor({
           lineNumbers: false,
           foldGutter: false,
           highlightActiveLine: true,
-          highlightSelectionMatches: false,
+          highlightSelectionMatches: true,
           bracketMatching: true,
           autocompletion: false,
+          searchKeymap: true,
         }}
         extensions={extensions}
         onChange={onChange}
         editable={!readOnly}
         readOnly={readOnly}
+        onCreateEditor={(view) => {
+          viewRef.current = view;
+        }}
       />
     </div>
   );

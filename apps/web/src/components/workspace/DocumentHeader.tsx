@@ -7,6 +7,7 @@ export type DocMenuAction =
   | 'export'
   | 'copy'
   | 'duplicate'
+  | 'find'
   | 'history'
   | 'focus'
   | 'outline'
@@ -192,6 +193,16 @@ export function DocumentHeader({
               }}
             >
               复制文档
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onMenuAction('find');
+              }}
+            >
+              查找（Ctrl/Cmd+F）
             </button>
             <div className="ws-menu-sep" />
             <button
