@@ -145,6 +145,69 @@ export function parseMarkdownBlocks(source: string): Block[] {
   return blocks;
 }
 
+export type OutlineItem = {
+  /** Stable id matching MarkdownView heading anchors. */
+  id: string;
+  level: 1 | 2 | 3;
+  text: string;
+  /** 0-based line index in source (for editor jump). */
+  line: number;
+};
+
+export function headingAnchorId(index: number): string {
+  return `md-h-${index}`;
+}
+
+/**
+ * Extract h1–h3 outline; skips fenced code so `#` inside fences is ignored.
+ */
+export function extractOutline(source: string): OutlineItem[] {
+  if (!source) return [];
+  const lines = source.replace(/\r\n/g, '\n').split('\n');
+  const items: OutlineItem[] = [];
+  let inFence = false;
+  let n = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.startsWith('```')) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const hm = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (!hm) continue;
+    items.push({
+      id: headingAnchorId(n),
+      level: hm[1]!.length as 1 | 2 | 3,
+      text: hm[2]!.trim(),
+      line: i,
+    });
+    n += 1;
+  }
+  return items;
+}
+
+/** Place caret at start of 0-based line in a textarea. */
+export function focusTextareaLine(
+  el: HTMLTextAreaElement,
+  line: number,
+): void {
+  const lines = el.value.replace(/\r\n/g, '\n').split('\n');
+  let pos = 0;
+  const max = Math.min(Math.max(0, line), lines.length);
+  for (let i = 0; i < max; i++) {
+    pos += (lines[i]?.length ?? 0) + 1;
+  }
+  el.focus();
+  el.setSelectionRange(pos, pos);
+  // Approximate scroll: ratio of line / total lines
+  const ratio = lines.length > 1 ? max / (lines.length - 1) : 0;
+  el.scrollTop = Math.max(
+    0,
+    ratio * (el.scrollHeight - el.clientHeight) - el.clientHeight * 0.2,
+  );
+}
+
 export function MarkdownView({
   source,
   className,
@@ -164,18 +227,32 @@ export function MarkdownView({
   }
 
   const blocks = parseMarkdownBlocks(source);
+  let headingIndex = 0;
   return (
     <div className={className ?? 'md-preview'}>
       {blocks.map((b, idx) => {
         if (b.type === 'empty') return null;
         if (b.type === 'heading') {
+          const id = headingAnchorId(headingIndex++);
           if (b.level === 1) {
-            return <h1 key={idx}>{renderInline(b.text, `h1-${idx}`)}</h1>;
+            return (
+              <h1 key={idx} id={id}>
+                {renderInline(b.text, `h1-${idx}`)}
+              </h1>
+            );
           }
           if (b.level === 2) {
-            return <h2 key={idx}>{renderInline(b.text, `h2-${idx}`)}</h2>;
+            return (
+              <h2 key={idx} id={id}>
+                {renderInline(b.text, `h2-${idx}`)}
+              </h2>
+            );
           }
-          return <h3 key={idx}>{renderInline(b.text, `h3-${idx}`)}</h3>;
+          return (
+            <h3 key={idx} id={id}>
+              {renderInline(b.text, `h3-${idx}`)}
+            </h3>
+          );
         }
         if (b.type === 'code') {
           return (
