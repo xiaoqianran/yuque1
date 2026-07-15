@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { kbApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { PublicKb } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatePanel } from '../components/StatePanel';
+import { confirmDeleteKbMessage } from '../ui/urls';
 import { resolveKbListPresentation, roleLabel } from '../ui/viewState';
 
 export function KbListPage() {
@@ -15,6 +16,7 @@ export function KbListPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -46,6 +48,22 @@ export function KbListPage() {
       setActionError(err instanceof ApiError ? err.message : '创建失败');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function onDeleteKb(kb: PublicKb, e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm(confirmDeleteKbMessage(kb.name))) return;
+    setDeletingId(kb.id);
+    setActionError(null);
+    try {
+      await kbApi.remove(kb.id);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : '删除失败');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -120,10 +138,23 @@ export function KbListPage() {
         <ul className="kb-list">
           {items.map((kb) => (
             <li key={kb.id}>
-              <Link to={`/kbs/${kb.id}`} className="kb-item">
-                <strong>{kb.name}</strong>
-                <span className="role-pill">{roleLabel(kb.role)}</span>
-              </Link>
+              <div className="kb-item-row">
+                <Link to={`/kbs/${kb.id}`} className="kb-item">
+                  <strong>{kb.name}</strong>
+                  <span className="role-pill">{roleLabel(kb.role)}</span>
+                </Link>
+                {kb.role === 'owner' && (
+                  <button
+                    type="button"
+                    className="btn secondary small danger-outline"
+                    disabled={deletingId === kb.id}
+                    onClick={(ev) => void onDeleteKb(kb, ev)}
+                    aria-label={`删除知识库 ${kb.name}`}
+                  >
+                    {deletingId === kb.id ? '删除中…' : '删除'}
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
