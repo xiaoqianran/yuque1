@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
+import {
+  buildDocExportPaths,
+  buildMarkdownZip,
+  downloadZipFile,
+  type ZipFileEntry,
+} from '../ui/exportKbZip';
 import { ApiError } from '../api/types';
 import type {
   ContentRevision,
@@ -65,6 +71,7 @@ export function useKnowledgeWorkspace(kbId: string) {
   const [purgingId, setPurgingId] = useState<string | null>(null);
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
   const [emptyingTrash, setEmptyingTrash] = useState(false);
+  const [exportingZip, setExportingZip] = useState(false);
   const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -523,6 +530,44 @@ export function useKnowledgeWorkspace(kbId: string) {
     }
   }, [canWrite, kbId, loadTrash]);
 
+  /** Export all docs in tree as a Markdown ZIP (members with read access). */
+  const exportKbZip = useCallback(async () => {
+    if (!kb || exportingZip) return;
+    setExportingZip(true);
+    setError(null);
+    setStatus('正在导出知识库…');
+    try {
+      const tree = await treeApi.list(kbId);
+      const items = tree.items;
+      const paths = buildDocExportPaths(items);
+      const files: ZipFileEntry[] = [];
+      // Sequential fetch to avoid burst; small KBs are fine.
+      for (const p of paths) {
+        try {
+          const c = await contentApi.get(p.nodeId);
+          files.push({ path: p.path, body: c.bodyMd });
+        } catch {
+          files.push({
+            path: p.path,
+            body: `<!-- export failed for node ${p.nodeId} -->\n`,
+          });
+        }
+      }
+      const zip = buildMarkdownZip(files);
+      downloadZipFile(kb.name || 'knowledge-base', zip);
+      setStatus(
+        paths.length
+          ? `已导出 ${paths.length} 篇文档为 ZIP`
+          : '已导出空知识库 ZIP',
+      );
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '导出知识库失败');
+      setStatus(null);
+    } finally {
+      setExportingZip(false);
+    }
+  }, [kb, kbId, exportingZip]);
+
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) {
@@ -769,6 +814,8 @@ export function useKnowledgeWorkspace(kbId: string) {
     emptyingTrash,
     emptyTrashMessage,
     confirmEmptyTrash,
+    exportingZip,
+    exportKbZip,
     saveKbMeta,
     kbSaving,
     enableShare,
