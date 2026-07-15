@@ -29,7 +29,7 @@ function mockPrisma(store: Store) {
         data,
       }: {
         where: { id: string };
-        data: { nickname: string };
+        data: { nickname?: string; email?: string | null };
       }) => {
         const u = store.users.find((x) => x.id === where.id)!;
         Object.assign(u, data);
@@ -99,5 +99,44 @@ describe('AuthService.updateProfile', () => {
     assert.equal(r.ok, false);
     if (r.ok) return;
     assert.equal(r.http, 404);
+  });
+
+  it('binds and clears email', async () => {
+    let r = await svc.updateProfile('u1', { email: '  Alice@Example.COM ' });
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.data.email, 'alice@example.com');
+    assert.equal(store.users[0].email, 'alice@example.com');
+
+    r = await svc.updateProfile('u1', { email: null });
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.data.email, null);
+    assert.equal(store.users[0].email, null);
+  });
+
+  it('rejects invalid email', async () => {
+    const r = await svc.updateProfile('u1', { email: 'not-an-email' });
+    assert.equal(r.ok, false);
+    if (r.ok) return;
+    assert.equal(r.http, 400);
+  });
+
+  it('requires at least one field', async () => {
+    const r = await svc.updateProfile('u1', {});
+    assert.equal(r.ok, false);
+    if (r.ok) return;
+    assert.equal(r.http, 400);
+  });
+
+  it('updates nickname and email together', async () => {
+    const r = await svc.updateProfile('u1', {
+      nickname: 'Bob',
+      email: 'bob@example.com',
+    });
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.equal(r.data.nickname, 'Bob');
+    assert.equal(r.data.email, 'bob@example.com');
   });
 });
