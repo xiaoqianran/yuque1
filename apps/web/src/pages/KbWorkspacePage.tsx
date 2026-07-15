@@ -30,12 +30,15 @@ import {
 } from '../ui/shareExpiry';
 import {
   buildMoveParentOptions,
+  collectAncestorIds,
+  expandAncestorsInCollapsed,
   normalizeKbDescription,
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
   planSiblingReorder,
   siblingReorderAvailability,
+  toggleCollapsedId,
   type SiblingReorderDirection,
 } from '../ui/treeOps';
 import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
@@ -61,40 +64,71 @@ function TreeNodes({
   depth,
   selectedId,
   onSelect,
+  collapsedIds,
+  onToggleCollapse,
 }: {
   parentId: string | null;
   map: Map<string | null, PublicNode[]>;
   depth: number;
   selectedId: string | null;
   onSelect: (n: PublicNode) => void;
+  collapsedIds: ReadonlySet<string>;
+  onToggleCollapse: (nodeId: string) => void;
 }) {
   const children = map.get(parentId) ?? [];
   return (
     <ul className="tree" style={{ paddingLeft: depth === 0 ? 0 : 12 }}>
-      {children.map((n) => (
-        <li key={n.id}>
-          <button
-            type="button"
-            className={`tree-item ${selectedId === n.id ? 'active' : ''}`}
-            onClick={() => onSelect(n)}
-          >
-            <span
-              className={`tree-type ${n.type === 'folder' ? 'tree-type--folder' : 'tree-type--doc'}`}
-              aria-hidden
-            >
-              {n.type === 'folder' ? 'F' : 'D'}
-            </span>
-            <span>{n.title}</span>
-          </button>
-          <TreeNodes
-            parentId={n.id}
-            map={map}
-            depth={depth + 1}
-            selectedId={selectedId}
-            onSelect={onSelect}
-          />
-        </li>
-      ))}
+      {children.map((n) => {
+        const kids = map.get(n.id) ?? [];
+        const hasKids = kids.length > 0;
+        const collapsed = collapsedIds.has(n.id);
+        return (
+          <li key={n.id}>
+            <div className="tree-row">
+              {hasKids ? (
+                <button
+                  type="button"
+                  className="tree-twistie"
+                  aria-label={collapsed ? '展开子节点' : '折叠子节点'}
+                  aria-expanded={!collapsed}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleCollapse(n.id);
+                  }}
+                >
+                  {collapsed ? '▶' : '▼'}
+                </button>
+              ) : (
+                <span className="tree-twistie-spacer" aria-hidden />
+              )}
+              <button
+                type="button"
+                className={`tree-item ${selectedId === n.id ? 'active' : ''}`}
+                onClick={() => onSelect(n)}
+              >
+                <span
+                  className={`tree-type ${n.type === 'folder' ? 'tree-type--folder' : 'tree-type--doc'}`}
+                  aria-hidden
+                >
+                  {n.type === 'folder' ? 'F' : 'D'}
+                </span>
+                <span className="tree-item-title">{n.title}</span>
+              </button>
+            </div>
+            {hasKids && !collapsed && (
+              <TreeNodes
+                parentId={n.id}
+                map={map}
+                depth={depth + 1}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={onToggleCollapse}
+              />
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -134,6 +168,7 @@ export function KbWorkspacePage() {
   const [lastSavedBody, setLastSavedBody] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(true);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
 
@@ -195,6 +230,9 @@ export function KbWorkspacePage() {
     setEditorMode('edit');
     setLastSavedBody(null);
     setSaving(false);
+    setCollapsedIds((prev) =>
+      expandAncestorsInCollapsed(prev, collectAncestorIds(nodes, n.id)),
+    );
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -798,6 +836,10 @@ export function KbWorkspacePage() {
               depth={0}
               selectedId={selected?.id ?? null}
               onSelect={(n) => void openNode(n)}
+              collapsedIds={collapsedIds}
+              onToggleCollapse={(id) =>
+                setCollapsedIds((prev) => toggleCollapsedId(prev, id))
+              }
             />
           )}
         </div>

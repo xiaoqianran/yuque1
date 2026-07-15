@@ -146,3 +146,41 @@ export function siblingReorderAvailability(
     canDown: planSiblingReorder(nodes, nodeId, 'down').ok,
   };
 }
+
+/** Ancestor node ids from root→parent of `nodeId` (does not include self). */
+export function collectAncestorIds(
+  nodes: PublicNode[],
+  nodeId: string,
+): string[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const chain: string[] = [];
+  let cur = byId.get(nodeId);
+  const guard = new Set<string>();
+  while (cur?.parentId) {
+    if (guard.has(cur.parentId)) break;
+    guard.add(cur.parentId);
+    chain.unshift(cur.parentId);
+    cur = byId.get(cur.parentId);
+  }
+  return chain;
+}
+
+/** Remove ancestor ids from a collapsed set so the path is visible. */
+export function expandAncestorsInCollapsed(
+  collapsed: ReadonlySet<string>,
+  ancestorIds: string[],
+): Set<string> {
+  const next = new Set(collapsed);
+  for (const id of ancestorIds) next.delete(id);
+  return next;
+}
+
+export function toggleCollapsedId(
+  collapsed: ReadonlySet<string>,
+  nodeId: string,
+): Set<string> {
+  const next = new Set(collapsed);
+  if (next.has(nodeId)) next.delete(nodeId);
+  else next.add(nodeId);
+  return next;
+}
