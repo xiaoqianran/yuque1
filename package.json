@@ -23,7 +23,9 @@
     "db:migrate": "pnpm --filter @yuque1/api prisma:deploy",
     "db:migrate:docker": "bash scripts/db-migrate-docker.sh",
     "db:generate": "pnpm --filter @yuque1/api prisma:generate",
-    "smoke": "bash scripts/smoke-local.sh"
+    "smoke": "bash scripts/smoke-local.sh",
+    "smoke:e2e": "bash scripts/smoke-e2e.sh",
+    "smoke:e2e:api": "node scripts/smoke-e2e-api.mjs"
   },
   "license": "UNLICENSED"
 }
