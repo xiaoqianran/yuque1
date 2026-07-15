@@ -161,7 +161,22 @@ async function main() {
   if (r.status !== 400 || r.json.success) {
     throw new Error(`empty nickname should 400: ${r.status} ${JSON.stringify(r.json)}`);
   }
-  console.log('    profile nickname update ok');
+  const email = `e2e.${Date.now()}@example.com`;
+  r = await a.req('PATCH', '/auth/me', { email });
+  assertOk('A bind email', r);
+  if (r.json.data?.email !== email.toLowerCase()) {
+    throw new Error(`email bind mismatch: ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('PATCH', '/auth/me', { email: 'bad' });
+  if (r.status !== 400 || r.json.success) {
+    throw new Error(`bad email should 400: ${r.status} ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('PATCH', '/auth/me', { email: null });
+  assertOk('A clear email', r);
+  if (r.json.data?.email != null) {
+    throw new Error(`email clear failed: ${JSON.stringify(r.json)}`);
+  }
+  console.log('    profile nickname/email update ok');
 
   // 2) Create KB
   r = await a.req('POST', '/kbs', { name: kbName, description: 'e2e' });

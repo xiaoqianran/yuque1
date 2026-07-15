@@ -3,10 +3,11 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/types';
 
 export function UserMenu() {
-  const { user, logout, updateNickname } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
+  const [nickDraft, setNickDraft] = useState('');
+  const [emailDraft, setEmailDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -14,7 +15,8 @@ export function UserMenu() {
   if (!user) return null;
 
   function startEdit() {
-    setDraft(user!.nickname);
+    setNickDraft(user!.nickname);
+    setEmailDraft(user!.email ?? '');
     setEditing(true);
     setError(null);
     setStatus(null);
@@ -25,9 +27,10 @@ export function UserMenu() {
     setError(null);
     setStatus(null);
     try {
-      await updateNickname(draft);
+      const email = emailDraft.trim() === '' ? null : emailDraft.trim();
+      await updateProfile({ nickname: nickDraft, email });
       setEditing(false);
-      setStatus('昵称已更新');
+      setStatus('资料已更新');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '更新失败');
     } finally {
@@ -62,16 +65,32 @@ export function UserMenu() {
       {open && (
         <div className="user-menu-panel" role="menu">
           <p className="user-menu-meta muted">{user.mobileE164}</p>
+          {user.email && (
+            <p className="user-menu-meta muted" title="绑定邮箱">
+              {user.email}
+            </p>
+          )}
           {editing ? (
             <div className="user-menu-edit">
               <label className="field-label">
                 昵称
                 <input
-                  value={draft}
+                  value={nickDraft}
                   maxLength={64}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => setNickDraft(e.target.value)}
                   aria-label="新昵称"
                   autoFocus
+                />
+              </label>
+              <label className="field-label">
+                邮箱（可选）
+                <input
+                  type="email"
+                  value={emailDraft}
+                  maxLength={255}
+                  onChange={(e) => setEmailDraft(e.target.value)}
+                  aria-label="邮箱"
+                  placeholder="不验证，可留空清除"
                 />
               </label>
               <div className="row">
@@ -100,7 +119,7 @@ export function UserMenu() {
               role="menuitem"
               onClick={() => startEdit()}
             >
-              修改昵称
+              编辑资料
             </button>
           )}
           {error && (
