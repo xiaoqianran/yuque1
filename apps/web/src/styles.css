@@ -1065,6 +1065,11 @@ a:focus-visible {
   border-radius: var(--radius-md);
 }
 
+.doc-stats {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+}
+
 .conflict-banner {
   border: 1px solid var(--color-warning-border);
   background: var(--color-warning-bg);
