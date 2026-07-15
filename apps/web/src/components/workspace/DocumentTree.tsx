@@ -34,6 +34,7 @@ type Props = {
   onMoveRequest: (node: PublicNode) => void;
   onReorder: (node: PublicNode, direction: 'up' | 'down') => void;
   onDeleteRequest: (node: PublicNode) => void;
+  onDuplicateRequest?: (node: PublicNode) => void;
   /** Apply planned drag drop via real API. */
   onDragMove?: (plan: {
     nodeId: string;
@@ -56,6 +57,7 @@ export function DocumentTree({
   onMoveRequest,
   onReorder,
   onDeleteRequest,
+  onDuplicateRequest,
   onDragMove,
   renameNodeId: controlledRenameId,
   onRenameNodeIdChange,
@@ -166,6 +168,9 @@ export function DocumentTree({
         break;
       case 'down':
         onReorder(node, 'down');
+        break;
+      case 'duplicate':
+        onDuplicateRequest?.(node);
         break;
       case 'delete':
         onDeleteRequest(node);

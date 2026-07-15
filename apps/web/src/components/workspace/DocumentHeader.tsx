@@ -6,6 +6,7 @@ export type DocMenuAction =
   | 'import'
   | 'export'
   | 'copy'
+  | 'duplicate'
   | 'history'
   | 'focus'
   | 'outline'
@@ -180,6 +181,17 @@ export function DocumentHeader({
               }}
             >
               复制 Markdown
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!canWrite}
+              onClick={() => {
+                setMenuOpen(false);
+                onMenuAction('duplicate');
+              }}
+            >
+              复制文档
             </button>
             <div className="ws-menu-sep" />
             <button

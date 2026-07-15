@@ -18,6 +18,7 @@ import {
   toggleCollapsedId,
   type SiblingReorderDirection,
 } from '../ui/treeOps';
+import { duplicateTitle } from '../ui/duplicateDoc';
 import { confirmDeleteNodeMessage } from '../ui/urls';
 import { useDocumentAutosave } from './useDocumentAutosave';
 import { useDocumentEditor } from './useDocumentEditor';
@@ -128,6 +129,7 @@ export function useKnowledgeWorkspace(kbId: string) {
     reloadServer,
     overwrite,
     saveAsCopy,
+    duplicateDoc: duplicateOpenDoc,
   } = editor;
 
   useDocumentAutosave({
@@ -340,6 +342,38 @@ export function useKnowledgeWorkspace(kbId: string) {
       }
     },
     [selected, refreshTree, setSelected],
+  );
+
+  /**
+   * Duplicate a document as a sibling via content save-as.
+   * Uses open editor body when the source is currently selected.
+   */
+  const duplicateDocument = useCallback(
+    async (node: PublicNode) => {
+      if (!canWrite || node.type !== 'doc') return null;
+      try {
+        let bodyMd = '';
+        if (selected?.id === node.id) {
+          bodyMd = body;
+        } else {
+          const c = await contentApi.get(node.id);
+          bodyMd = c.bodyMd;
+        }
+        const r = await contentApi.saveAs(node.id, bodyMd, {
+          title: duplicateTitle(node.title),
+          parentId: node.parentId,
+        });
+        const items = await refreshTree();
+        await openNode(r.node, items);
+        setRenameNodeId(r.node.id);
+        setStatus(`已复制为「${r.node.title}」`);
+        return r.node;
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : '复制文档失败');
+        return null;
+      }
+    },
+    [canWrite, selected, body, refreshTree, openNode],
   );
 
   /** Drag-drop move with explicit sortOrder (real API). */
@@ -644,6 +678,8 @@ export function useKnowledgeWorkspace(kbId: string) {
     moveNode,
     dragMoveNode,
     reorderSibling,
+    duplicateDocument,
+    duplicateOpenDoc,
     titleDraft,
     setTitleDraft,
     commitTitleDraft,

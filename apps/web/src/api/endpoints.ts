@@ -101,12 +101,20 @@ export const contentApi = {
       method: 'POST',
       body: JSON.stringify({ baseVersion, bodyMd }),
     }),
-  saveAs: (nodeId: string, bodyMd: string, title?: string) =>
+  saveAs: (
+    nodeId: string,
+    bodyMd: string,
+    opts?: { title?: string; parentId?: string | null },
+  ) =>
     apiRequest<{ node: PublicNode; content: DocumentContent }>(
       `/nodes/${nodeId}/content/save-as`,
       {
         method: 'POST',
-        body: JSON.stringify({ bodyMd, title }),
+        body: JSON.stringify({
+          bodyMd,
+          ...(opts?.title !== undefined ? { title: opts.title } : {}),
+          ...(opts?.parentId !== undefined ? { parentId: opts.parentId } : {}),
+        }),
       },
     ),
   listRevisions: (nodeId: string) =>

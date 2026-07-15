@@ -129,6 +129,22 @@ export function useDocumentEditor(opts: {
     setStatus('已另存为新文档');
   }, [selected, body, refreshTree, onSaveAsCopyOpened, setStatus]);
 
+  /** Explicit duplicate with a user-facing title (sibling by default). */
+  const duplicateDoc = useCallback(
+    async (opts: { title: string; parentId?: string | null }) => {
+      if (!selected || selected.type !== 'doc') return null;
+      const r = await contentApi.saveAs(selected.id, body, {
+        title: opts.title,
+        parentId: opts.parentId === undefined ? selected.parentId : opts.parentId,
+      });
+      await refreshTree();
+      onSaveAsCopyOpened?.(r.node);
+      setStatus(`已复制为「${r.node.title}」`);
+      return r.node;
+    },
+    [selected, body, refreshTree, onSaveAsCopyOpened, setStatus],
+  );
+
   return {
     saving,
     setSaving,
@@ -141,5 +157,6 @@ export function useDocumentEditor(opts: {
     reloadServer,
     overwrite,
     saveAsCopy,
+    duplicateDoc,
   };
 }
