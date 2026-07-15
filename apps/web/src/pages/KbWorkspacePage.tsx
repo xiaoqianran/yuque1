@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
+import { StatePanel } from '../components/StatePanel';
+import { resolveViewPhase } from '../ui/viewState';
 
 function buildChildrenMap(nodes: PublicNode[]): Map<string | null, PublicNode[]> {
   const map = new Map<string | null, PublicNode[]>();
@@ -41,8 +43,13 @@ function TreeNodes({
             className={`tree-item ${selectedId === n.id ? 'active' : ''}`}
             onClick={() => onSelect(n)}
           >
-            <span className="tree-type">{n.type === 'folder' ? '📁' : '📄'}</span>
-            {n.title}
+            <span
+              className={`tree-type ${n.type === 'folder' ? 'tree-type--folder' : 'tree-type--doc'}`}
+              aria-hidden
+            >
+              {n.type === 'folder' ? 'F' : 'D'}
+            </span>
+            <span>{n.title}</span>
           </button>
           <TreeNodes
             parentId={n.id}
@@ -69,6 +76,8 @@ export function KbWorkspacePage() {
   const [share, setShare] = useState<ShareInfo | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [docLoading, setDocLoading] = useState(false);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
 
@@ -77,18 +86,23 @@ export function KbWorkspacePage() {
     setNodes(data.items);
   }, [kbId]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setError(null);
-        const [k, t] = await Promise.all([kbApi.get(kbId), treeApi.list(kbId)]);
-        setKb(k);
-        setNodes(t.items);
-      } catch (e) {
-        setError(e instanceof ApiError ? e.message : '加载知识库失败');
-      }
-    })();
+  const loadWorkspace = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [k, t] = await Promise.all([kbApi.get(kbId), treeApi.list(kbId)]);
+      setKb(k);
+      setNodes(t.items);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '加载知识库失败');
+    } finally {
+      setLoading(false);
+    }
   }, [kbId]);
+
+  useEffect(() => {
+    void loadWorkspace();
+  }, [loadWorkspace]);
 
   async function openNode(n: PublicNode) {
     setSelected(n);
@@ -100,6 +114,7 @@ export function KbWorkspacePage() {
       setVersion(null);
       return;
     }
+    setDocLoading(true);
     try {
       const c = await contentApi.get(n.id);
       setBody(c.bodyMd);
@@ -108,21 +123,18 @@ export function KbWorkspacePage() {
       setShare(s);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '打开文档失败');
+    } finally {
+      setDocLoading(false);
     }
   }
 
   async function createNode(type: 'folder' | 'doc') {
     const title = newTitle.trim() || (type === 'folder' ? '新建文件夹' : '无标题文档');
     try {
-      const parentId =
-        selected && (selected.type === 'folder' || selected.type === 'doc')
-          ? selected.id
-          : null;
-      // 若当前选中 doc 且建 folder，仍允许挂在 doc 下（产品允许 doc 子树）
       const node = await treeApi.create(kbId, {
         type,
         title,
-        parentId: selected ? selected.id : parentId,
+        parentId: selected ? selected.id : null,
       });
       setNewTitle('');
       await refreshTree();
@@ -147,7 +159,7 @@ export function KbWorkspacePage() {
           (e.details as { serverVersion?: number } | null)?.serverVersion ?? 0,
         );
         setConflict({ serverVersion });
-        setStatus('版本冲突');
+        setStatus('版本冲突：请选择处理方式');
       } else {
         setStatus(e instanceof ApiError ? e.message : '保存失败');
       }
@@ -202,76 +214,154 @@ export function KbWorkspacePage() {
       ? `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}s/${share.token}`
       : null;
 
+  const loadPhase = resolveViewPhase({
+    loading,
+    error: loading ? null : error && !kb ? error : null,
+    isEmpty: false,
+  });
+
+  if (loadPhase === 'loading') {
+    return (
+      <div className="editor-placeholder">
+        <StatePanel phase="loading" title="正在打开知识库" description="加载元数据与文档树…" />
+      </div>
+    );
+  }
+
+  if (!kb) {
+    return (
+      <div className="editor-placeholder">
+        <StatePanel
+          phase="error"
+          title="无法打开知识库"
+          description={error ?? '资源不存在或无权限'}
+          action={
+            <div className="row">
+              <Link className="btn secondary small" to="/">
+                返回列表
+              </Link>
+              <button type="button" className="btn primary small" onClick={() => void loadWorkspace()}>
+                重试
+              </button>
+            </div>
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="workspace">
-      <aside className="sidebar">
+      <aside className="sidebar" aria-label="文档树">
         <div className="sidebar-head">
           <Link to="/" className="back">
-            ← 知识库
+            ← 全部知识库
           </Link>
-          <h2>{kb?.name ?? '…'}</h2>
+          <h2>{kb.name}</h2>
         </div>
         <div className="tree-actions">
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="标题"
+            placeholder="节点标题"
+            aria-label="新建节点标题"
           />
           <div className="row">
-            <button type="button" className="btn secondary small" onClick={() => void createNode('folder')}>
+            <button
+              type="button"
+              className="btn secondary small"
+              onClick={() => void createNode('folder')}
+            >
               + 文件夹
             </button>
             <button type="button" className="btn secondary small" onClick={() => void createNode('doc')}>
               + 文档
             </button>
           </div>
-          <p className="hint muted">新建会挂在当前选中节点下（可挂 doc 子节点）</p>
+          <p className="hint">新建挂在当前选中节点下（文档也可挂子节点）</p>
         </div>
-        <TreeNodes
-          parentId={null}
-          map={childMap}
-          depth={0}
-          selectedId={selected?.id ?? null}
-          onSelect={(n) => void openNode(n)}
-        />
+        <div className="tree-scroll">
+          {nodes.length === 0 ? (
+            <StatePanel
+              phase="empty"
+              title="文档树为空"
+              description="创建文件夹或文档后会出现在这里。"
+            />
+          ) : (
+            <TreeNodes
+              parentId={null}
+              map={childMap}
+              depth={0}
+              selectedId={selected?.id ?? null}
+              onSelect={(n) => void openNode(n)}
+            />
+          )}
+        </div>
       </aside>
 
-      <section className="editor-pane">
-        {error && <p className="form-msg">{error}</p>}
-        {!selected && <p className="muted center">选择或创建文档开始编辑</p>}
-        {selected?.type === 'folder' && (
-          <div className="card">
-            <h2>📁 {selected.title}</h2>
-            <p className="muted">文件夹无正文。可在其下创建子节点。</p>
+      <section className="editor-pane" aria-label="编辑区">
+        {error && kb && (
+          <p className="form-msg form-msg--error" role="alert">
+            {error}
+          </p>
+        )}
+
+        {!selected && (
+          <div className="editor-placeholder">
+            <StatePanel
+              phase="empty"
+              title="选择或创建文档"
+              description="在左侧树中选择节点，或新建文档开始编辑 Markdown。"
+            />
           </div>
         )}
+
+        {selected?.type === 'folder' && (
+          <div className="card folder-panel">
+            <h2>{selected.title}</h2>
+            <p className="muted">这是文件夹，没有正文。可在其下创建子文件夹或文档。</p>
+          </div>
+        )}
+
         {selected?.type === 'doc' && (
           <>
             <div className="editor-toolbar">
-              <h2>📄 {selected.title}</h2>
+              <h2>{selected.title}</h2>
               <div className="row">
-                <span className="badge">v{version ?? '?'}</span>
+                <span className="badge">v{version ?? '—'}</span>
                 <button type="button" className="btn primary small" onClick={() => void save()}>
                   保存
                 </button>
-                <button type="button" className="btn secondary small" onClick={() => void toggleShare()}>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => void toggleShare()}
+                >
                   {share?.enabled ? '关闭分享' : '开启分享'}
                 </button>
               </div>
             </div>
             {status && <p className="status-line">{status}</p>}
             {conflict && (
-              <div className="conflict-banner">
+              <div className="conflict-banner" role="alert">
                 <strong>版本冲突</strong>
-                <span className="muted">服务器版本 v{conflict.serverVersion}</span>
+                <span className="muted">服务器版本 v{conflict.serverVersion}，请选择如何处理</span>
                 <div className="row">
-                  <button type="button" className="btn secondary small" onClick={() => void reloadServer()}>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => void reloadServer()}
+                  >
                     加载最新
                   </button>
                   <button type="button" className="btn primary small" onClick={() => void overwrite()}>
                     强制覆盖
                   </button>
-                  <button type="button" className="btn secondary small" onClick={() => void saveAsCopy()}>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => void saveAsCopy()}
+                  >
                     另存副本
                   </button>
                 </div>
@@ -283,13 +373,18 @@ export function KbWorkspacePage() {
                 <span className="muted"> （相对本站路径）</span>
               </p>
             )}
-            <textarea
-              className="editor"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Markdown 正文…"
-              spellCheck={false}
-            />
+            {docLoading ? (
+              <StatePanel phase="loading" title="加载正文" description="读取文档内容与版本…" />
+            ) : (
+              <textarea
+                className="editor"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="在此编写 Markdown 正文…"
+                spellCheck={false}
+                aria-label="文档正文"
+              />
+            )}
           </>
         )}
       </section>
