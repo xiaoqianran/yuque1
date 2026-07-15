@@ -42,6 +42,14 @@ describe('workspace delete confirm path', () => {
     assert.match(dialog, /onCancel/);
   });
 
+  it('knowledge list page uses DeleteConfirmDialog, not window.confirm', () => {
+    const list = readSrc('pages/KbListPage.tsx');
+    assert.match(list, /DeleteConfirmDialog/);
+    assert.match(list, /deleteTarget|setDeleteTarget/);
+    assert.match(list, /confirmDeleteKb/);
+    assert.equal(list.includes('window.confirm'), false);
+  });
+
   it('models request → dialog → confirm flow without auto-delete', () => {
     // Mirrors useKnowledgeWorkspace: select target first; API only on confirm.
     type State = { deleteTarget: { id: string; title: string } | null };

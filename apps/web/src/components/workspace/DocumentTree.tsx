@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PublicNode } from '../../api/types';
 import {
+  adjacentVisibleNode,
   buildChildrenMap,
   siblingReorderAvailability,
 } from '../../ui/treeOps';
@@ -41,6 +42,7 @@ export function DocumentTree({
   onRenameNodeIdChange,
 }: Props) {
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
+  const treeRef = useRef<HTMLDivElement | null>(null);
   const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [internalRenameId, setInternalRenameId] = useState<string | null>(null);
@@ -71,6 +73,22 @@ export function DocumentTree({
       window.removeEventListener('click', onClick);
     };
   }, [renameNodeId]);
+
+  function onTreeKeyDown(e: React.KeyboardEvent) {
+    if (renameNodeId || menuNodeId) return;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    // Only when focus is inside the tree
+    const root = treeRef.current;
+    if (!root || !root.contains(document.activeElement)) return;
+    e.preventDefault();
+    const next = adjacentVisibleNode(
+      nodes,
+      collapsedIds,
+      selectedId,
+      e.key === 'ArrowDown' ? 1 : -1,
+    );
+    if (next) onSelect(next);
+  }
 
   function openMenu(node: PublicNode, x: number, y: number) {
     setMenuNodeId(node.id);
@@ -185,5 +203,16 @@ export function DocumentTree({
     return null;
   }
 
-  return renderLevel(null, 0);
+  return (
+    <div
+      ref={treeRef}
+      className="ws-tree-root"
+      role="tree"
+      tabIndex={0}
+      aria-label="文档树"
+      onKeyDown={onTreeKeyDown}
+    >
+      {renderLevel(null, 0)}
+    </div>
+  );
 }

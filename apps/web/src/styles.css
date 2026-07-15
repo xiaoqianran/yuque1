@@ -210,11 +210,9 @@ a:focus-visible {
   gap: var(--space-3);
   height: var(--header-height);
   padding: 0 var(--page-pad-x);
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px) saturate(1.2);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
-  border-bottom: 1px solid var(--color-border-soft);
-  box-shadow: var(--shadow-xs);
+  background: #ffffff;
+  border-bottom: 1px solid var(--ws-border, var(--color-border));
+  box-shadow: none;
   position: sticky;
   top: 0;
   z-index: 20;

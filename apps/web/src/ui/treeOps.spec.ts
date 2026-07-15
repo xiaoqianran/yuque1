@@ -2,12 +2,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { PublicNode } from '../api/types';
 import {
+  adjacentVisibleNode,
   buildBreadcrumbPath,
   buildChildrenMap,
   buildMoveParentOptions,
   collectAncestorIds,
   collectParentIdsWithChildren,
   expandAncestorsInCollapsed,
+  flattenVisibleTree,
   normalizeKbDescription,
   normalizeKbName,
   normalizeRenameTitle,
@@ -271,6 +273,49 @@ describe('buildChildrenMap / buildBreadcrumbPath', () => {
     assert.deepEqual(
       buildBreadcrumbPath(nodes, 'b').map((n) => n.id),
       ['a', 'b'],
+    );
+  });
+});
+
+describe('flattenVisibleTree / adjacentVisibleNode', () => {
+  const nodes = [
+    node({ id: 'c', title: 'C', type: 'doc', parentId: null, sortOrder: 1 }),
+    node({ id: 'a', title: 'A', type: 'folder', parentId: null, sortOrder: 2 }),
+    node({ id: 'b', title: 'B', type: 'doc', parentId: 'a', sortOrder: 1 }),
+  ];
+
+  it('includes children when folder expanded', () => {
+    assert.deepEqual(
+      flattenVisibleTree(nodes, new Set()).map((n) => n.id),
+      ['c', 'a', 'b'],
+    );
+  });
+
+  it('hides children when folder collapsed', () => {
+    assert.deepEqual(
+      flattenVisibleTree(nodes, new Set(['a'])).map((n) => n.id),
+      ['c', 'a'],
+    );
+  });
+
+  it('moves selection down and up', () => {
+    const collapsed = new Set<string>();
+    assert.equal(
+      adjacentVisibleNode(nodes, collapsed, 'c', 1)?.id,
+      'a',
+    );
+    assert.equal(
+      adjacentVisibleNode(nodes, collapsed, 'a', 1)?.id,
+      'b',
+    );
+    assert.equal(
+      adjacentVisibleNode(nodes, collapsed, 'b', -1)?.id,
+      'a',
+    );
+    // at end stays
+    assert.equal(
+      adjacentVisibleNode(nodes, collapsed, 'b', 1)?.id,
+      'b',
     );
   });
 });

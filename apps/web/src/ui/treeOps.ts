@@ -280,3 +280,51 @@ export function buildBreadcrumbPath(
   }
   return path;
 }
+
+/**
+ * Visible tree order (DFS) respecting collapsed folders.
+ * Used for keyboard ArrowUp/ArrowDown selection.
+ */
+export function flattenVisibleTree(
+  nodes: PublicNode[],
+  collapsedIds: ReadonlySet<string>,
+): PublicNode[] {
+  const childMap = buildChildrenMap(nodes);
+  const out: PublicNode[] = [];
+  function walk(parentId: string | null) {
+    const kids = childMap.get(parentId) ?? [];
+    for (const n of kids) {
+      out.push(n);
+      const hasKids = (childMap.get(n.id) ?? []).length > 0;
+      if (hasKids && !collapsedIds.has(n.id)) {
+        walk(n.id);
+      }
+    }
+  }
+  walk(null);
+  return out;
+}
+
+/**
+ * Next/previous node in visible tree order.
+ * direction: 1 = down, -1 = up.
+ */
+export function adjacentVisibleNode(
+  nodes: PublicNode[],
+  collapsedIds: ReadonlySet<string>,
+  selectedId: string | null,
+  direction: 1 | -1,
+): PublicNode | null {
+  const visible = flattenVisibleTree(nodes, collapsedIds);
+  if (visible.length === 0) return null;
+  if (!selectedId) {
+    return direction === 1 ? visible[0]! : visible[visible.length - 1]!;
+  }
+  const idx = visible.findIndex((n) => n.id === selectedId);
+  if (idx < 0) {
+    return direction === 1 ? visible[0]! : visible[visible.length - 1]!;
+  }
+  const next = idx + direction;
+  if (next < 0 || next >= visible.length) return visible[idx]!;
+  return visible[next]!;
+}

@@ -1,5 +1,15 @@
 /* Document tree */
 
+.ws-tree-root {
+  outline: none;
+  min-height: 32px;
+}
+
+.ws-tree-root:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ws-primary, #1677ff);
+  border-radius: var(--ws-radius-sm, 4px);
+}
+
 .ws-tree {
   list-style: none;
   margin: 0;
