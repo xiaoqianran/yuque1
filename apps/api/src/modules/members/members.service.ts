@@ -266,4 +266,90 @@ export class MembersService {
 
     return { ok: true, data: null };
   }
+
+  /**
+   * Transfer owner: demote actor to editor, promote target to owner,
+   * sync knowledge_bases.owner_user_id (Design-01).
+   */
+  async transferOwner(
+    actorId: string,
+    kbId: string,
+    newOwnerUserId: string,
+  ): Promise<ServiceResult<PublicMember>> {
+    const m = await this.membership(kbId, actorId);
+    if (!m) return this.notFound();
+    if (m.role !== 'owner') return this.notFound();
+
+    if (!newOwnerUserId || newOwnerUserId === actorId) {
+      return {
+        ok: false,
+        code: 'VALIDATION_ERROR',
+        message: '须指定其他用户作为新 owner',
+        http: 400,
+      };
+    }
+
+    const target = await this.prisma.kbMember.findUnique({
+      where: {
+        knowledgeBaseId_userId: {
+          knowledgeBaseId: kbId,
+          userId: newOwnerUserId,
+        },
+      },
+      include: { user: { select: { mobileE164: true, nickname: true } } },
+    });
+    if (!target) {
+      return {
+        ok: false,
+        code: 'NOT_FOUND',
+        message: '目标用户不是本库成员',
+        http: 404,
+      };
+    }
+    if (target.role === 'owner') {
+      return {
+        ok: false,
+        code: 'VALIDATION_ERROR',
+        message: '目标已是 owner',
+        http: 409,
+      };
+    }
+
+    const newOwner = await this.prisma.$transaction(async (tx) => {
+      await tx.kbMember.update({
+        where: {
+          knowledgeBaseId_userId: {
+            knowledgeBaseId: kbId,
+            userId: actorId,
+          },
+        },
+        data: { role: 'editor' },
+      });
+      const promoted = await tx.kbMember.update({
+        where: { id: target.id },
+        data: { role: 'owner' },
+        include: { user: { select: { mobileE164: true, nickname: true } } },
+      });
+      await tx.knowledgeBase.update({
+        where: { id: kbId },
+        data: { ownerUserId: newOwnerUserId },
+      });
+      await tx.auditLog.create({
+        data: {
+          id: ulid(),
+          actorUserId: actorId,
+          action: 'member.transfer_owner',
+          resourceType: 'kb',
+          resourceId: kbId,
+          metadata: {
+            fromUserId: actorId,
+            toUserId: newOwnerUserId,
+          },
+        },
+      });
+      return promoted;
+    });
+
+    return { ok: true, data: this.toPublic(newOwner) };
+  }
 }
