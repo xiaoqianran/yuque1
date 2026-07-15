@@ -5,6 +5,7 @@ import { ApiError } from '../api/types';
 import type { PublicKb } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatePanel } from '../components/StatePanel';
+import { DeleteConfirmDialog } from '../components/workspace/DeleteConfirmDialog';
 import { normalizeKbName } from '../ui/treeOps';
 import { confirmDeleteKbMessage } from '../ui/urls';
 import { resolveKbListPresentation, roleLabel } from '../ui/viewState';
@@ -22,6 +23,7 @@ export function KbListPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PublicKb | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [renamingBusy, setRenamingBusy] = useState(false);
@@ -59,10 +61,15 @@ export function KbListPage() {
     }
   }
 
-  async function onDeleteKb(kb: PublicKb, e: MouseEvent) {
+  function requestDeleteKb(kb: PublicKb, e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!window.confirm(confirmDeleteKbMessage(kb.name))) return;
+    setDeleteTarget(kb);
+  }
+
+  async function confirmDeleteKb() {
+    if (!deleteTarget) return;
+    const kb = deleteTarget;
     setDeletingId(kb.id);
     setActionError(null);
     try {
@@ -71,6 +78,7 @@ export function KbListPage() {
         setRenamingId(null);
         setRenameDraft('');
       }
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : '删除失败');
@@ -255,7 +263,7 @@ export function KbListPage() {
                           type="button"
                           className="btn secondary small danger-outline"
                           disabled={deletingId === kb.id}
-                          onClick={(ev) => void onDeleteKb(kb, ev)}
+                          onClick={(ev) => requestDeleteKb(kb, ev)}
                           aria-label={`删除知识库 ${kb.name}`}
                         >
                           {deletingId === kb.id ? '删除中…' : '删除'}
@@ -269,6 +277,18 @@ export function KbListPage() {
           })}
         </ul>
       )}
+
+      <DeleteConfirmDialog
+        open={deleteTarget != null}
+        title="删除知识库"
+        message={
+          deleteTarget ? confirmDeleteKbMessage(deleteTarget.name) : ''
+        }
+        confirmLabel="删除"
+        busy={deletingId != null}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDeleteKb()}
+      />
     </div>
   );
 }
