@@ -22,6 +22,10 @@ import {
   formatDocStats,
 } from '../ui/docStats';
 import {
+  readFileAsText,
+  validateImportFile,
+} from '../ui/importMd';
+import {
   extractOutline,
   focusTextareaLine,
   MarkdownView,
@@ -184,6 +188,7 @@ export function KbWorkspacePage() {
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -407,6 +412,38 @@ export function KbWorkspacePage() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [dirty]);
+
+  async function importMarkdownFile(file: File) {
+    if (!selected || selected.type !== 'doc' || !canWrite) return;
+    const check = validateImportFile(file);
+    if (!check.ok) {
+      setStatus(check.message);
+      return;
+    }
+    if (dirty) {
+      const ok = window.confirm(
+        '当前有未保存修改，导入将覆盖编辑区内容（尚未写入服务器）。是否继续？',
+      );
+      if (!ok) return;
+    }
+    try {
+      const text = await readFileAsText(file);
+      setBody(text);
+      setEditorMode('edit');
+      setStatus(`已导入「${file.name}」（未保存，请保存或等待自动保存）`);
+    } catch {
+      setStatus('读取文件失败');
+    }
+  }
+
+  async function copyBodyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(body);
+      setStatus('正文已复制到剪贴板');
+    } catch {
+      setStatus('复制失败：浏览器未授权剪贴板');
+    }
+  }
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
@@ -1055,6 +1092,36 @@ export function KbWorkspacePage() {
                   title="下载当前编辑区内容为 .md"
                 >
                   导出 MD
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={!canWrite}
+                  onClick={() => importInputRef.current?.click()}
+                  title="从本地 .md / .txt 导入到编辑区"
+                >
+                  导入 MD
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".md,.markdown,.txt,text/markdown,text/plain"
+                  className="sr-only"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f) void importMarkdownFile(f);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => void copyBodyToClipboard()}
+                  title="复制正文到剪贴板"
+                >
+                  复制
                 </button>
                 <label className="share-expiry-inline">
                   <span className="muted">有效期</span>
