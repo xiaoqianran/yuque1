@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 
 /**
  * Lightweight Markdown → React (no deps).
- * Supports: ATX headings h1–h3, fenced code, unordered lists,
- * paragraphs, **bold**, *italic*, `code`, [text](url).
+ * Supports: ATX h1–h3, fenced code, ul/ol, blockquote, GFM tables,
+ * hr, paragraphs, **bold**, *italic*, `code`, [text](url).
  */
 
 function isSafeHref(href: string): boolean {
@@ -18,7 +18,6 @@ function isSafeHref(href: string): boolean {
 /** Inline: bold, italic, code, links. Order matters. */
 export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
   const nodes: ReactNode[] = [];
-  // code | bold | italic | link | plain
   const re =
     /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g;
   let last = 0;
@@ -72,12 +71,46 @@ export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
   return nodes;
 }
 
-type Block =
+export type Block =
   | { type: 'heading'; level: 1 | 2 | 3; text: string }
   | { type: 'code'; lang: string; body: string }
-  | { type: 'list'; items: string[] }
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'blockquote'; lines: string[] }
+  | { type: 'table'; header: string[]; rows: string[][] }
+  | { type: 'hr' }
   | { type: 'paragraph'; text: string }
   | { type: 'empty' };
+
+function isTableSep(line: string): boolean {
+  // | --- | :---: | ---: |
+  const t = line.trim();
+  if (!t.includes('|')) return false;
+  const cells = t
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((c) => c.trim());
+  if (cells.length === 0) return false;
+  return cells.every((c) => /^:?-{3,}:?$/.test(c));
+}
+
+function parseTableRow(line: string): string[] {
+  let t = line.trim();
+  if (t.startsWith('|')) t = t.slice(1);
+  if (t.endsWith('|')) t = t.slice(0, -1);
+  return t.split('|').map((c) => c.trim());
+}
+
+function isSpecialStart(line: string): boolean {
+  if (line.startsWith('```')) return true;
+  if (/^(#{1,3})\s+/.test(line)) return true;
+  if (/^[-*]\s+/.test(line)) return true;
+  if (/^\d+\.\s+/.test(line)) return true;
+  if (/^>\s?/.test(line)) return true;
+  if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim())) return true;
+  if (line.includes('|') && isTableSep(line)) return true;
+  return false;
+}
 
 export function parseMarkdownBlocks(source: string): Block[] {
   if (!source) return [];
@@ -101,8 +134,14 @@ export function parseMarkdownBlocks(source: string): Block[] {
         body.push(lines[i]!);
         i += 1;
       }
-      if (i < lines.length) i += 1; // closing fence
+      if (i < lines.length) i += 1;
       blocks.push({ type: 'code', lang, body: body.join('\n') });
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim())) {
+      blocks.push({ type: 'hr' });
+      i += 1;
       continue;
     }
 
@@ -117,25 +156,68 @@ export function parseMarkdownBlocks(source: string): Block[] {
       continue;
     }
 
+    // GFM table: header + separator + rows
+    if (
+      line.includes('|') &&
+      i + 1 < lines.length &&
+      isTableSep(lines[i + 1]!)
+    ) {
+      const header = parseTableRow(line);
+      i += 2; // skip header + sep
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i]!.trim() !== '' && lines[i]!.includes('|')) {
+        if (isTableSep(lines[i]!)) {
+          i += 1;
+          continue;
+        }
+        rows.push(parseTableRow(lines[i]!));
+        i += 1;
+      }
+      blocks.push({ type: 'table', header, rows });
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const qlines: string[] = [];
+      while (i < lines.length && /^>\s?/.test(lines[i]!)) {
+        qlines.push(lines[i]!.replace(/^>\s?/, ''));
+        i += 1;
+      }
+      blocks.push({ type: 'blockquote', lines: qlines });
+      continue;
+    }
+
     if (/^[-*]\s+/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^[-*]\s+/.test(lines[i]!)) {
         items.push(lines[i]!.replace(/^[-*]\s+/, ''));
         i += 1;
       }
-      blocks.push({ type: 'list', items });
+      blocks.push({ type: 'list', ordered: false, items });
       continue;
     }
 
-    // paragraph: merge until blank / special
+    if (/^\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i]!)) {
+        items.push(lines[i]!.replace(/^\d+\.\s+/, ''));
+        i += 1;
+      }
+      blocks.push({ type: 'list', ordered: true, items });
+      continue;
+    }
+
     const para: string[] = [line];
     i += 1;
     while (
       i < lines.length &&
       lines[i]!.trim() !== '' &&
-      !lines[i]!.startsWith('```') &&
-      !/^(#{1,3})\s+/.test(lines[i]!) &&
-      !/^[-*]\s+/.test(lines[i]!)
+      !isSpecialStart(lines[i]!) &&
+      !(
+        lines[i]!.includes('|') &&
+        i + 1 < lines.length &&
+        isTableSep(lines[i + 1]!)
+      )
     ) {
       para.push(lines[i]!);
       i += 1;
@@ -146,11 +228,9 @@ export function parseMarkdownBlocks(source: string): Block[] {
 }
 
 export type OutlineItem = {
-  /** Stable id matching MarkdownView heading anchors. */
   id: string;
   level: 1 | 2 | 3;
   text: string;
-  /** 0-based line index in source (for editor jump). */
   line: number;
 };
 
@@ -158,9 +238,6 @@ export function headingAnchorId(index: number): string {
   return `md-h-${index}`;
 }
 
-/**
- * Extract h1–h3 outline; skips fenced code so `#` inside fences is ignored.
- */
 export function extractOutline(source: string): OutlineItem[] {
   if (!source) return [];
   const lines = source.replace(/\r\n/g, '\n').split('\n');
@@ -187,7 +264,6 @@ export function extractOutline(source: string): OutlineItem[] {
   return items;
 }
 
-/** Place caret at start of 0-based line in a textarea. */
 export function focusTextareaLine(
   el: HTMLTextAreaElement,
   line: number,
@@ -200,7 +276,6 @@ export function focusTextareaLine(
   }
   el.focus();
   el.setSelectionRange(pos, pos);
-  // Approximate scroll: ratio of line / total lines
   const ratio = lines.length > 1 ? max / (lines.length - 1) : 0;
   el.scrollTop = Math.max(
     0,
@@ -232,6 +307,9 @@ export function MarkdownView({
     <div className={className ?? 'md-preview'}>
       {blocks.map((b, idx) => {
         if (b.type === 'empty') return null;
+        if (b.type === 'hr') {
+          return <hr key={idx} className="md-hr" />;
+        }
         if (b.type === 'heading') {
           const id = headingAnchorId(headingIndex++);
           if (b.level === 1) {
@@ -262,17 +340,51 @@ export function MarkdownView({
           );
         }
         if (b.type === 'list') {
+          const Tag = b.ordered ? 'ol' : 'ul';
           return (
-            <ul key={idx}>
+            <Tag key={idx}>
               {b.items.map((item, j) => (
                 <li key={j}>{renderInline(item, `li-${idx}-${j}`)}</li>
               ))}
-            </ul>
+            </Tag>
           );
         }
-        return (
-          <p key={idx}>{renderInline(b.text, `p-${idx}`)}</p>
-        );
+        if (b.type === 'blockquote') {
+          return (
+            <blockquote key={idx} className="md-quote">
+              {b.lines.map((ln, j) => (
+                <p key={j}>{renderInline(ln, `q-${idx}-${j}`)}</p>
+              ))}
+            </blockquote>
+          );
+        }
+        if (b.type === 'table') {
+          return (
+            <div key={idx} className="md-table-wrap">
+              <table className="md-table">
+                <thead>
+                  <tr>
+                    {b.header.map((cell, j) => (
+                      <th key={j}>{renderInline(cell, `th-${idx}-${j}`)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {b.rows.map((row, r) => (
+                    <tr key={r}>
+                      {row.map((cell, j) => (
+                        <td key={j}>
+                          {renderInline(cell, `td-${idx}-${r}-${j}`)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        return <p key={idx}>{renderInline(b.text, `p-${idx}`)}</p>;
       })}
     </div>
   );
@@ -283,7 +395,14 @@ export function describeBlocks(source: string): string[] {
   return parseMarkdownBlocks(source).map((b) => {
     if (b.type === 'heading') return `h${b.level}:${b.text}`;
     if (b.type === 'code') return `code:${b.lang}:${b.body}`;
-    if (b.type === 'list') return `list:${b.items.join('|')}`;
+    if (b.type === 'list') {
+      return `${b.ordered ? 'ol' : 'ul'}:${b.items.join('|')}`;
+    }
+    if (b.type === 'blockquote') return `quote:${b.lines.join('/')}`;
+    if (b.type === 'table') {
+      return `table:${b.header.join(',')};${b.rows.map((r) => r.join(',')).join(';')}`;
+    }
+    if (b.type === 'hr') return 'hr';
     if (b.type === 'paragraph') return `p:${b.text}`;
     return 'empty';
   });
