@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.4
+  version: 0.1.5
   contact:
     name: yuque1
 
@@ -750,7 +750,7 @@ paths:
       tags: [Share]
       summary: 通过分享 token 只读访问
       description: |
-        无需登录。校验 enabled、未过期(P1)、node/kb 未软删、type=doc。
+        无需登录。校验 enabled、未过期（expiresAt 已过则 404）、node/kb 未软删、type=doc。
         返回 Markdown 正文，不返回 HTML。
       operationId: getSharedDocument
       security: []
@@ -1201,7 +1201,11 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: P1；MVP 可忽略
+          description: |
+            可选。设为未来时间则链接到期后公开读返回 404；
+            `null` 或省略（新建）表示永不过期；
+            已启用时再次 PUT 且带 `expiresAt` 可更新有效期；
+            过去时间 → 400 VALIDATION_ERROR。
 
     VersionConflictDetails:
       type: object

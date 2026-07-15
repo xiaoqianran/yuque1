@@ -216,4 +216,48 @@ describe('ShareService', () => {
     const pub = await svc.getByToken(en.data.token!);
     assert.equal(pub.ok, false);
   });
+
+  it('enable with future expiresAt stores and is readable', async () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const en = await svc.enable('u1', 'n1', { expiresAt: future });
+    assert.equal(en.ok, true);
+    if (!en.ok) return;
+    assert.ok(en.data.expiresAt);
+    assert.equal(store.shares[0].expiresAt?.toISOString(), en.data.expiresAt);
+    const pub = await svc.getByToken(en.data.token!);
+    assert.equal(pub.ok, true);
+  });
+
+  it('enable rejects past expiresAt', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const r = await svc.enable('u1', 'n1', { expiresAt: past });
+    assert.equal(r.ok, false);
+    if (r.ok) return;
+    assert.equal(r.http, 400);
+    assert.equal(store.shares.length, 0);
+  });
+
+  it('enable updates expiresAt when already enabled', async () => {
+    const a = await svc.enable('u1', 'n1');
+    assert.equal(a.ok, true);
+    if (!a.ok) return;
+    const future = new Date(Date.now() + 3_600_000).toISOString();
+    const b = await svc.enable('u1', 'n1', { expiresAt: future });
+    assert.equal(b.ok, true);
+    if (!b.ok) return;
+    assert.equal(b.data.token, a.data.token);
+    assert.ok(b.data.expiresAt);
+    assert.equal(store.shares.filter((s) => s.enabled).length, 1);
+  });
+
+  it('enable can clear expiresAt with null', async () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const a = await svc.enable('u1', 'n1', { expiresAt: future });
+    assert.equal(a.ok, true);
+    if (!a.ok) return;
+    const b = await svc.enable('u1', 'n1', { expiresAt: null });
+    assert.equal(b.ok, true);
+    if (!b.ok) return;
+    assert.equal(b.data.expiresAt, null);
+  });
 });
