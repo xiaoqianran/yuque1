@@ -21,6 +21,11 @@ import {
   downloadMarkdownFile,
   formatDocStats,
 } from '../ui/docStats';
+import { isExitFocusKey, isToggleFocusShortcut } from '../ui/focusMode';
+import {
+  readFileAsText,
+  validateImportFile,
+} from '../ui/importMd';
 import {
   extractOutline,
   focusTextareaLine,
@@ -182,8 +187,10 @@ export function KbWorkspacePage() {
   const [outlineOpen, setOutlineOpen] = useState(true);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  const [focusMode, setFocusMode] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -382,9 +389,25 @@ export function KbWorkspacePage() {
     save,
   ]);
 
-  // Ctrl/Cmd+S → manual save (block browser "Save Page")
+  // Ctrl/Cmd+S → manual save; Ctrl/Cmd+Shift+F → focus mode; Esc → exit focus
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (isToggleFocusShortcut(e)) {
+        e.preventDefault();
+        if (selected?.type === 'doc') {
+          setFocusMode((v) => {
+            const next = !v;
+            if (next) setOutlineOpen(false);
+            return next;
+          });
+        }
+        return;
+      }
+      if (focusMode && isExitFocusKey(e)) {
+        e.preventDefault();
+        setFocusMode(false);
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== 's' && e.key !== 'S') return;
       e.preventDefault();
@@ -395,7 +418,12 @@ export function KbWorkspacePage() {
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selected?.type, canWrite, saving, version, save]);
+  }, [selected?.type, canWrite, saving, version, save, focusMode]);
+
+  // Leave focus when switching away from a doc
+  useEffect(() => {
+    if (selected?.type !== 'doc' && focusMode) setFocusMode(false);
+  }, [selected?.type, focusMode]);
 
   // Warn when leaving with unsaved edits
   useEffect(() => {
@@ -407,6 +435,38 @@ export function KbWorkspacePage() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [dirty]);
+
+  async function importMarkdownFile(file: File) {
+    if (!selected || selected.type !== 'doc' || !canWrite) return;
+    const check = validateImportFile(file);
+    if (!check.ok) {
+      setStatus(check.message);
+      return;
+    }
+    if (dirty) {
+      const ok = window.confirm(
+        '当前有未保存修改，导入将覆盖编辑区内容（尚未写入服务器）。是否继续？',
+      );
+      if (!ok) return;
+    }
+    try {
+      const text = await readFileAsText(file);
+      setBody(text);
+      setEditorMode('edit');
+      setStatus(`已导入「${file.name}」（未保存，请保存或等待自动保存）`);
+    } catch {
+      setStatus('读取文件失败');
+    }
+  }
+
+  async function copyBodyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(body);
+      setStatus('正文已复制到剪贴板');
+    } catch {
+      setStatus('复制失败：浏览器未授权剪贴板');
+    }
+  }
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
@@ -707,8 +767,8 @@ export function KbWorkspacePage() {
   }
 
   return (
-    <div className="workspace">
-      <aside className="sidebar" aria-label="文档树">
+    <div className={`workspace${focusMode ? ' workspace--focus' : ''}`}>
+      <aside className="sidebar" aria-label="文档树" hidden={focusMode}>
         <div className="sidebar-head">
           <Link to="/" className="back">
             ← 全部知识库
@@ -1039,6 +1099,21 @@ export function KbWorkspacePage() {
                 </button>
                 <button
                   type="button"
+                  className={`btn secondary small${focusMode ? ' active-focus' : ''}`}
+                  onClick={() =>
+                    setFocusMode((v) => {
+                      const next = !v;
+                      if (next) setOutlineOpen(false);
+                      return next;
+                    })
+                  }
+                  aria-pressed={focusMode}
+                  title="Ctrl/Cmd+Shift+F · Esc 退出"
+                >
+                  {focusMode ? '退出专注' : '专注'}
+                </button>
+                <button
+                  type="button"
                   className="btn primary small"
                   disabled={!canWrite || saving || version == null}
                   onClick={() => void save({ auto: false })}
@@ -1055,6 +1130,36 @@ export function KbWorkspacePage() {
                   title="下载当前编辑区内容为 .md"
                 >
                   导出 MD
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={!canWrite}
+                  onClick={() => importInputRef.current?.click()}
+                  title="从本地 .md / .txt 导入到编辑区"
+                >
+                  导入 MD
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".md,.markdown,.txt,text/markdown,text/plain"
+                  className="sr-only"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (f) void importMarkdownFile(f);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => void copyBodyToClipboard()}
+                  title="复制正文到剪贴板"
+                >
+                  复制
                 </button>
                 <label className="share-expiry-inline">
                   <span className="muted">有效期</span>

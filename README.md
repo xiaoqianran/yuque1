@@ -2,7 +2,7 @@
 
 复刻语雀（Yuque）核心能力的可自托管知识库：企业级研发流程、OpenAPI 契约先行，前后端迭代交付。
 
-**当前发布**：**[v0.6.2](https://github.com/xiaoqianran/yuque1/releases/tag/v0.6.2)**（OpenAPI **0.1.9**）
+**当前发布**：**[v0.6.3](https://github.com/xiaoqianran/yuque1/releases/tag/v0.6.3)**（OpenAPI **0.1.9**）
 
 ## 能力一览
 
@@ -10,11 +10,12 @@
 |------|------|
 | 短信登录 | Mock 验证码；Cookie `sid` 会话 |
 | 个人资料 | 昵称更新；可选邮箱绑定（不验证） |
-| 知识库 | 创建/列表/改名/简介/软删 |
-| 文档树 | folder/doc、搜索、重命名、移动、折叠展开、删除；**最近打开** |
-| 正文 | 乐观锁 / 自动保存 / MD 预览+大纲 / **字数统计** / **导出 MD** / 离开提示；Ctrl/Cmd+S |
-| 分享 | token 公开只读；有效期 expiresAt；分享页 MD 渲染 |
+| 知识库 | 创建/列表/改名/简介/软删（卡片网格 UI） |
+| 文档树 | folder/doc、搜索、重命名、移动、折叠、最近打开 |
+| 正文 | 自动保存 / MD 预览+大纲 / 字数 / **导入·导出 MD** / **专注模式** / Ctrl+S |
+| 分享 | token 公开只读；有效期；分享页 MD 渲染 |
 | 成员 | owner 添加 editor/reader；转让 owner |
+| UI | Inter 字体 · 毛玻璃顶栏 · 登录分栏 · ui-ux-pro-max |
 
 ## 快速启动
 
