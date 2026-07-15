@@ -41,6 +41,10 @@ export const kbApi = {
 export const treeApi = {
   list: (kbId: string) =>
     apiRequest<{ items: PublicNode[] }>(`/kbs/${kbId}/tree`),
+  search: (kbId: string, q: string, limit = 50) =>
+    apiRequest<{ items: PublicNode[] }>(
+      `/kbs/${kbId}/nodes?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
   create: (
     kbId: string,
     input: { type: 'folder' | 'doc'; title: string; parentId?: string | null },
@@ -48,6 +52,18 @@ export const treeApi = {
     apiRequest<PublicNode>(`/kbs/${kbId}/nodes`, {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+  update: (nodeId: string, title: string) =>
+    apiRequest<PublicNode>(`/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+  move: (nodeId: string, parentId: string | null, sortOrder?: number) =>
+    apiRequest<PublicNode>(`/nodes/${nodeId}/move`, {
+      method: 'POST',
+      body: JSON.stringify(
+        sortOrder === undefined ? { parentId } : { parentId, sortOrder },
+      ),
     }),
   remove: (nodeId: string) =>
     apiRequest<null>(`/nodes/${nodeId}`, { method: 'DELETE' }),
