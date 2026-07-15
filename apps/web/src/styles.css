@@ -820,6 +820,62 @@ a:focus-visible {
   padding-right: 2px;
 }
 
+.recent-docs {
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+}
+
+.recent-docs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.recent-docs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 9rem;
+  overflow: auto;
+}
+
+.recent-docs-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-docs-item:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-ink);
+}
+
+.recent-docs-item.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-ink);
+  font-weight: var(--font-semibold);
+}
+
 .tree-collapse-actions {
   padding: 0 var(--space-1);
   gap: var(--space-2);
