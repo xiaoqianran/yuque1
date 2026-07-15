@@ -4,6 +4,7 @@ import { ContentModule } from './modules/content/content.module';
 import { HealthModule } from './modules/health/health.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/kb.module';
 import { KvModule } from './modules/kv/kv.module';
+import { MembersModule } from './modules/members/members.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { ShareModule } from './modules/share/share.module';
 import { TreeModule } from './modules/tree/tree.module';
@@ -15,6 +16,7 @@ import { TreeModule } from './modules/tree/tree.module';
     HealthModule,
     AuthModule,
     KnowledgeBaseModule,
+    MembersModule,
     TreeModule,
     ContentModule,
     ShareModule,
