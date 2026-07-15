@@ -4,6 +4,7 @@ import type { PublicNode } from '../api/types';
 import {
   buildMoveParentOptions,
   collectAncestorIds,
+  collectParentIdsWithChildren,
   expandAncestorsInCollapsed,
   normalizeKbDescription,
   normalizeKbName,
@@ -167,5 +168,12 @@ describe('tree collapse helpers', () => {
     assert.equal(a.has('x'), true);
     const b = toggleCollapsedId(a, 'x');
     assert.equal(b.has('x'), false);
+  });
+
+  it('collectParentIdsWithChildren', () => {
+    const ids = collectParentIdsWithChildren(nodes);
+    assert.equal(ids.includes('root'), true);
+    assert.equal(ids.includes('mid'), true);
+    assert.equal(ids.includes('leaf'), false);
   });
 });
