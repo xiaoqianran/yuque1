@@ -35,6 +35,55 @@
   padding: 0;
 }
 
+/* CodeMirror search panel */
+.ws-cm-wrap .cm-panels {
+  background: #fafafa;
+  border-bottom: 1px solid var(--ws-border, #e8e9eb);
+  font-family: var(--ws-font-body, system-ui, sans-serif);
+  font-size: 13px;
+  color: var(--ws-text-primary, #262626);
+  z-index: 5;
+}
+
+.ws-cm-wrap .cm-panels.cm-panels-top {
+  border-bottom: 1px solid var(--ws-border, #e8e9eb);
+}
+
+.ws-cm-wrap .cm-panel input {
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 1px solid var(--ws-border, #e8e9eb);
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+}
+
+.ws-cm-wrap .cm-panel input:focus {
+  border-color: var(--ws-primary, #1677ff);
+}
+
+.ws-cm-wrap .cm-panel button {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ws-border, #e8e9eb);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ws-cm-wrap .cm-panel button:hover {
+  background: var(--ws-hover-bg, #f0f1f3);
+}
+
+.ws-cm-wrap .cm-searchMatch {
+  background: #ffe58f;
+}
+
+.ws-cm-wrap .cm-searchMatch-selected {
+  background: #ffc53d;
+}
+
 .ws-preview {
   font-size: 15px;
   line-height: 1.75;
