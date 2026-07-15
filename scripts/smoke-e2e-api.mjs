@@ -235,11 +235,21 @@ async function main() {
   }
   console.log('    share past expiresAt rejected');
 
-  // 6) Public read without session
+  // 6) Public read without session (current body after overwrite)
+  r = await a.req('GET', `/nodes/${nodeId}/content`);
+  assertOk('get content after overwrite', r);
+  const currentBody = r.json.data?.bodyMd;
+  if (currentBody !== bodyMdAfterOverwrite) {
+    throw new Error(
+      `content after overwrite mismatch: expected=${JSON.stringify(bodyMdAfterOverwrite)} got=${JSON.stringify(currentBody)}`,
+    );
+  }
   r = await anon.req('GET', `/share/${token}`, undefined, { auth: false });
   assertOk('share public get', r);
-  if (r.json.data?.title !== docTitle || r.json.data?.bodyMd !== bodyMd) {
-    throw new Error('share public content mismatch');
+  if (r.json.data?.title !== docTitle || r.json.data?.bodyMd !== currentBody) {
+    throw new Error(
+      `share public content mismatch: title=${JSON.stringify(r.json.data?.title)} body=${JSON.stringify(r.json.data?.bodyMd)} expectedBody=${JSON.stringify(currentBody)}`,
+    );
   }
   console.log('    public share read ok');
 
