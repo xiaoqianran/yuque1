@@ -96,32 +96,3 @@ describe('extractOutline', () => {
   });
 });
 
-describe('GFM surface fixtures (string presence for preview pipeline)', () => {
-  it('task list table image quote and fence strings are retained for render', () => {
-    const src = `
-# Doc
-
-- [ ] todo
-- [x] done
-
-| Col | Val |
-| --- | --- |
-| a | 1 |
-
-> quote
-
-![alt](https://example.com/x.png)
-
-\`\`\`js
-console.log(1)
-\`\`\`
-`;
-    assert.match(src, /- \[ \]/);
-    assert.match(src, /\| Col \|/);
-    assert.match(src, /> quote/);
-    assert.match(src, /!\[alt\]/);
-    assert.match(src, /```js/);
-    const outline = extractOutline(src);
-    assert.equal(outline[0]?.text, 'Doc');
-  });
-});

@@ -12,6 +12,7 @@ import {
   recordRecentDoc,
   saveRecentDocIds,
 } from '../ui/recentDocs';
+import { OpenSequence } from '../ui/openSeq';
 import {
   collectAncestorIds,
   expandAncestorsInCollapsed,
@@ -29,7 +30,8 @@ export function useDocumentSelection(kbId: string) {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const openSeq = useRef(0);
+  /** Shared with tests: shipped race gate for async open. */
+  const openSeqRef = useRef(new OpenSequence());
 
   const syncRecentFromNodes = useCallback(
     (nodes: PublicNode[]) => {
@@ -58,7 +60,7 @@ export function useDocumentSelection(kbId: string) {
 
   const openNode = useCallback(
     async (n: PublicNode, nodes: PublicNode[]) => {
-      const seq = ++openSeq.current;
+      const seq = openSeqRef.current.next();
       setSelected(n);
       setShare(null);
       setLastSavedBody(null);
@@ -81,23 +83,23 @@ export function useDocumentSelection(kbId: string) {
       setDocLoading(true);
       try {
         const c = await contentApi.get(n.id);
-        if (seq !== openSeq.current) return;
+        if (!openSeqRef.current.isCurrent(seq)) return;
         setBody(c.bodyMd);
         setVersion(c.version);
         setLastSavedBody(c.bodyMd);
         try {
           const s = await shareApi.get(n.id);
-          if (seq !== openSeq.current) return;
+          if (!openSeqRef.current.isCurrent(seq)) return;
           setShare(s);
         } catch {
-          if (seq !== openSeq.current) return;
+          if (!openSeqRef.current.isCurrent(seq)) return;
           setShare(null);
         }
       } catch (e) {
-        if (seq !== openSeq.current) return;
+        if (!openSeqRef.current.isCurrent(seq)) return;
         throw e instanceof ApiError ? e : new Error('打开文档失败');
       } finally {
-        if (seq === openSeq.current) setDocLoading(false);
+        if (openSeqRef.current.isCurrent(seq)) setDocLoading(false);
       }
     },
     [kbId],
@@ -138,6 +140,6 @@ export function useDocumentSelection(kbId: string) {
     openDefaultDocument,
     initRecent,
     syncRecentFromNodes,
-    openSeq,
+    openSeq: openSeqRef,
   };
 }

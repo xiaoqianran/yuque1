@@ -1,5 +1,6 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
 import { StatePanel } from '../components/StatePanel';
 import { DeleteConfirmDialog } from '../components/workspace/DeleteConfirmDialog';
 import { DocumentHeader } from '../components/workspace/DocumentHeader';
@@ -60,6 +61,15 @@ export function KbWorkspacePage() {
 
   const saveTone =
     ws.saving ? 'saving' : ws.dirty || ws.conflict ? 'dirty' : 'default';
+
+  useEffect(() => {
+    if (!ws.mobileSidebarOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') ws.setMobileSidebarOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [ws.mobileSidebarOpen, ws.setMobileSidebarOpen]);
 
   const loadPhase = resolveViewPhase({
     loading: ws.loading,
@@ -138,6 +148,14 @@ export function KbWorkspacePage() {
   return (
     <WorkspaceShell focusMode={ws.focusMode}>
       <div className="ws-body">
+        {!ws.focusMode && ws.mobileSidebarOpen && (
+          <button
+            type="button"
+            className="ws-sidebar-scrim"
+            aria-label="关闭文档目录"
+            onClick={() => ws.setMobileSidebarOpen(false)}
+          />
+        )}
         {!ws.focusMode && (
           <KnowledgeSidebar
             kb={ws.kb}
@@ -146,6 +164,7 @@ export function KbWorkspacePage() {
             collapsedIds={ws.collapsedIds}
             canWrite={ws.canWrite}
             mobileOpen={ws.mobileSidebarOpen}
+            onMobileClose={() => ws.setMobileSidebarOpen(false)}
             searchQ={ws.searchQ}
             onSearchQChange={ws.setSearchQ}
             onSearch={() => void ws.runSearch()}
@@ -190,6 +209,35 @@ export function KbWorkspacePage() {
         )}
 
         <section className="ws-main" aria-label="文档工作区">
+          {!ws.focusMode && (
+            <div className="ws-mobile-nav">
+              <button
+                type="button"
+                className="ws-btn"
+                aria-label="打开文档目录"
+                aria-expanded={ws.mobileSidebarOpen}
+                aria-controls="ws-knowledge-sidebar"
+                title="文档目录"
+                onClick={() => ws.setMobileSidebarOpen(true)}
+              >
+                <Menu size={16} aria-hidden />
+                目录
+              </button>
+              <span className="ws-mobile-nav-kb" title={ws.kb.name}>
+                {ws.kb.name}
+              </span>
+              {ws.mobileSidebarOpen && (
+                <button
+                  type="button"
+                  className="ws-icon-btn"
+                  aria-label="关闭文档目录"
+                  onClick={() => ws.setMobileSidebarOpen(false)}
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+          )}
           {ws.error && ws.kb && (
             <p className="form-msg form-msg--error" role="alert" style={{ margin: '8px 16px' }}>
               {ws.error}
