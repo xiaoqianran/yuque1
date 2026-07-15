@@ -19,7 +19,7 @@ info:
     - 浏览器客户端：需登录请求使用 credentials/include（withCredentials）
     - 删除类接口统一 200 + 包络（不用 204）
     - 列表集合字段统一 `data.items`（含树扁平列表）
-  version: 0.1.5
+  version: 0.1.6
   contact:
     name: yuque1
 
@@ -572,6 +572,53 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /nodes/{nodeId}/content/revisions:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+    get:
+      tags: [Content]
+      summary: 列出覆盖前正文快照
+      description: |
+        成员可读。仅 overwrite 路径写入的 `content_revisions`（reason=overwrite_on_conflict）。
+        列表不含 bodyMd，最多 50 条，按 createdAt 倒序。
+      operationId: listNodeContentRevisions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeRevisionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /nodes/{nodeId}/content/revisions/{revisionId}:
+    parameters:
+      - $ref: '#/components/parameters/NodeId'
+      - name: revisionId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Ulid'
+    get:
+      tags: [Content]
+      summary: 获取单条覆盖快照（含正文）
+      description: 成员可读；revision 必须属于该 node。
+      operationId: getNodeContentRevision
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelopeRevision'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /nodes/{nodeId}/content:
     parameters:
       - $ref: '#/components/parameters/NodeId'
@@ -968,6 +1015,39 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    ContentRevisionBrief:
+      type: object
+      required: [id, version, reason, createdAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        version:
+          type: integer
+          minimum: 1
+          description: 覆盖前 content_version（= baseVersion）
+        reason:
+          type: string
+          enum: [overwrite_on_conflict]
+        createdBy:
+          allOf:
+            - $ref: '#/components/schemas/UserBrief'
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ContentRevision:
+      allOf:
+        - $ref: '#/components/schemas/ContentRevisionBrief'
+        - type: object
+          required: [nodeId, bodyMd]
+          properties:
+            nodeId:
+              $ref: '#/components/schemas/Ulid'
+            bodyMd:
+              type: string
+              description: 覆盖前 Markdown 正文
 
     ShareInfo:
       type: object
@@ -1421,6 +1501,32 @@ components:
         success: { type: boolean, enum: [true] }
         data:
           $ref: '#/components/schemas/ContentMeta'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeRevisionList:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ContentRevisionBrief'
+        error: { nullable: true }
+        requestId: { type: string }
+
+    SuccessEnvelopeRevision:
+      type: object
+      required: [success, data, error, requestId]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          $ref: '#/components/schemas/ContentRevision'
         error: { nullable: true }
         requestId: { type: string }
 

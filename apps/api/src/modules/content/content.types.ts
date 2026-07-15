@@ -19,6 +19,20 @@ export type ContentMetaDto = {
   updatedAt: string;
 };
 
+/** List item: no bodyMd (payload control). */
+export type ContentRevisionBrief = {
+  id: string;
+  version: number;
+  reason: string;
+  createdBy: UserBrief | null;
+  createdAt: string;
+};
+
+export type ContentRevisionDetail = ContentRevisionBrief & {
+  bodyMd: string;
+  nodeId: string;
+};
+
 export type PublicNode = {
   id: string;
   knowledgeBaseId: string;

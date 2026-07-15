@@ -4,6 +4,8 @@ import { ulid } from '../../common/ulid';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
   ContentMetaDto,
+  ContentRevisionBrief,
+  ContentRevisionDetail,
   DocumentContentDto,
   KbRole,
   PublicNode,
@@ -172,6 +174,88 @@ export class ContentService {
       updatedBy = this.toUserBrief(u);
     }
     return { ok: true, data: this.toContentDto(c, updatedBy) };
+  }
+
+  /**
+   * List overwrite snapshots for a doc (newest first). Members only; no bodyMd.
+   */
+  async listRevisions(
+    userId: string,
+    nodeId: string,
+  ): Promise<ServiceResult<{ items: ContentRevisionBrief[] }>> {
+    const r = await this.loadDocNode(userId, nodeId);
+    if (!r.ok) return r;
+
+    const rows = await this.prisma.contentRevision.findMany({
+      where: { nodeId },
+      orderBy: [{ createdAt: 'desc' }, { version: 'desc' }],
+      take: 50,
+      select: {
+        id: true,
+        version: true,
+        reason: true,
+        createdBy: true,
+        createdAt: true,
+      },
+    });
+
+    const userIds = [...new Set(rows.map((x) => x.createdBy))];
+    const users =
+      userIds.length === 0
+        ? []
+        : await this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, nickname: true },
+          });
+    const byId = new Map(users.map((u) => [u.id, u]));
+
+    return {
+      ok: true,
+      data: {
+        items: rows.map((row) => ({
+          id: row.id,
+          version: row.version,
+          reason: row.reason,
+          createdBy: this.toUserBrief(byId.get(row.createdBy) ?? null),
+          createdAt: row.createdAt.toISOString(),
+        })),
+      },
+    };
+  }
+
+  /** Full snapshot including bodyMd. */
+  async getRevision(
+    userId: string,
+    nodeId: string,
+    revisionId: string,
+  ): Promise<ServiceResult<ContentRevisionDetail>> {
+    const r = await this.loadDocNode(userId, nodeId);
+    if (!r.ok) return r;
+
+    const row = await this.prisma.contentRevision.findFirst({
+      where: { id: revisionId, nodeId },
+    });
+    if (!row) return this.notFound();
+
+    let createdBy: UserBrief | null = null;
+    const u = await this.prisma.user.findUnique({
+      where: { id: row.createdBy },
+      select: { id: true, nickname: true },
+    });
+    createdBy = this.toUserBrief(u);
+
+    return {
+      ok: true,
+      data: {
+        id: row.id,
+        nodeId: row.nodeId,
+        version: row.version,
+        reason: row.reason,
+        bodyMd: row.bodyMd,
+        createdBy,
+        createdAt: row.createdAt.toISOString(),
+      },
+    };
   }
 
   async put(
