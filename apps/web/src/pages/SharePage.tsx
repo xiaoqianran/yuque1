@@ -4,6 +4,7 @@ import { shareApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { SharedDocument } from '../api/types';
 import { StatePanel } from '../components/StatePanel';
+import { MarkdownView } from '../ui/markdown';
 import { formatUpdatedAt, resolveViewPhase } from '../ui/viewState';
 
 export function SharePage() {
@@ -61,7 +62,7 @@ export function SharePage() {
           {doc.updatedAt && (
             <p className="muted">更新于 {formatUpdatedAt(doc.updatedAt)}</p>
           )}
-          <pre className="md-body">{doc.bodyMd || '（空文档）'}</pre>
+          <MarkdownView source={doc.bodyMd} className="md-preview share-md" />
         </section>
       )}
     </div>

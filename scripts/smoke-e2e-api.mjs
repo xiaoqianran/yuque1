@@ -145,6 +145,39 @@ async function main() {
   let r = await a.req('GET', '/auth/me');
   assertOk('A auth/me', r);
 
+  // 1b) Update nickname
+  const newNick = `e2e-nick-${Date.now().toString(36).slice(-6)}`;
+  r = await a.req('PATCH', '/auth/me', { nickname: newNick });
+  assertOk('A update nickname', r);
+  if (r.json.data?.nickname !== newNick) {
+    throw new Error(`nickname patch mismatch: ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('GET', '/auth/me');
+  assertOk('A auth/me after nick', r);
+  if (r.json.data?.nickname !== newNick) {
+    throw new Error(`nickname not persisted: ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('PATCH', '/auth/me', { nickname: '   ' });
+  if (r.status !== 400 || r.json.success) {
+    throw new Error(`empty nickname should 400: ${r.status} ${JSON.stringify(r.json)}`);
+  }
+  const email = `e2e.${Date.now()}@example.com`;
+  r = await a.req('PATCH', '/auth/me', { email });
+  assertOk('A bind email', r);
+  if (r.json.data?.email !== email.toLowerCase()) {
+    throw new Error(`email bind mismatch: ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('PATCH', '/auth/me', { email: 'bad' });
+  if (r.status !== 400 || r.json.success) {
+    throw new Error(`bad email should 400: ${r.status} ${JSON.stringify(r.json)}`);
+  }
+  r = await a.req('PATCH', '/auth/me', { email: null });
+  assertOk('A clear email', r);
+  if (r.json.data?.email != null) {
+    throw new Error(`email clear failed: ${JSON.stringify(r.json)}`);
+  }
+  console.log('    profile nickname/email update ok');
+
   // 2) Create KB
   r = await a.req('POST', '/kbs', { name: kbName, description: 'e2e' });
   if (r.status !== 200 && r.status !== 201) {
@@ -169,6 +202,47 @@ async function main() {
   if (!nodeId) throw new Error(`create node: no id: ${JSON.stringify(r.json)}`);
   console.log(`    doc created id=${nodeId}`);
 
+  // 3b) Second sibling + reorder via sortOrder swap
+  r = await a.req('POST', `/kbs/${kbId}/nodes`, {
+    type: 'doc',
+    title: `${docTitle}-b`,
+    parentId: null,
+  });
+  if (r.status !== 200 && r.status !== 201) {
+    throw new Error(`create node b: HTTP ${r.status}: ${JSON.stringify(r.json)}`);
+  }
+  const nodeIdB = r.json.data?.id;
+  if (!nodeIdB) throw new Error(`create node b: no id: ${JSON.stringify(r.json)}`);
+
+  r = await a.req('GET', `/kbs/${kbId}/tree`);
+  assertOk('tree list before reorder', r);
+  const roots = (r.json.data?.items ?? []).filter((n) => n.parentId == null);
+  const aNode = roots.find((n) => n.id === nodeId);
+  const bNode = roots.find((n) => n.id === nodeIdB);
+  if (!aNode || !bNode) throw new Error('tree missing siblings');
+  r = await a.req('POST', `/nodes/${nodeId}/move`, {
+    parentId: null,
+    sortOrder: bNode.sortOrder,
+  });
+  assertOk('move A sort', r);
+  r = await a.req('POST', `/nodes/${nodeIdB}/move`, {
+    parentId: null,
+    sortOrder: aNode.sortOrder,
+  });
+  assertOk('move B sort', r);
+  r = await a.req('GET', `/kbs/${kbId}/tree`);
+  assertOk('tree list after reorder', r);
+  const rootsAfter = (r.json.data?.items ?? [])
+    .filter((n) => n.parentId == null)
+    .slice()
+    .sort((x, y) => x.sortOrder - y.sortOrder || x.title.localeCompare(y.title));
+  if (rootsAfter[0]?.id !== nodeIdB || rootsAfter[1]?.id !== nodeId) {
+    throw new Error(
+      `sibling reorder failed: order=${rootsAfter.map((n) => `${n.id}:${n.sortOrder}`).join(',')}`,
+    );
+  }
+  console.log('    sibling reorder ok');
+
   // 4) Put content
   r = await a.req('PUT', `/nodes/${nodeId}/content`, {
     expectedVersion: 1,
@@ -180,20 +254,76 @@ async function main() {
   }
   console.log('    content saved v2');
 
-  // 5) Enable share
-  r = await a.req('PUT', `/nodes/${nodeId}/share`, {});
+  // 4b) Overwrite → content_revisions
+  const bodyMdAfterOverwrite = `${bodyMd}\n\noverwritten`;
+  r = await a.req('POST', `/nodes/${nodeId}/content/overwrite`, {
+    baseVersion: 2,
+    bodyMd: bodyMdAfterOverwrite,
+  });
+  assertOk('overwrite content', r);
+  if (r.json.data?.version !== 3) {
+    throw new Error(`overwrite: expected version 3, got ${r.json.data?.version}`);
+  }
+  console.log('    content overwritten v3');
+
+  // 4c) List revisions
+  r = await a.req('GET', `/nodes/${nodeId}/content/revisions`);
+  assertOk('list revisions', r);
+  const revItems = r.json.data?.items;
+  if (!Array.isArray(revItems) || revItems.length < 1) {
+    throw new Error(`list revisions: empty ${JSON.stringify(r.json)}`);
+  }
+  if (revItems[0].version !== 2 || revItems[0].reason !== 'overwrite_on_conflict') {
+    throw new Error(`list revisions: unexpected item ${JSON.stringify(revItems[0])}`);
+  }
+  const revisionId = revItems[0].id;
+  console.log(`    revisions listed n=${revItems.length} id=${revisionId}`);
+
+  // 4d) Get revision detail (pre-overwrite body = body before overwrite)
+  r = await a.req('GET', `/nodes/${nodeId}/content/revisions/${revisionId}`);
+  assertOk('get revision', r);
+  if (r.json.data?.bodyMd !== bodyMd || r.json.data?.version !== 2) {
+    throw new Error(`get revision: body mismatch ${JSON.stringify(r.json)}`);
+  }
+  console.log('    revision detail ok');
+
+  // 5) Enable share with future expiresAt
+  const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+  r = await a.req('PUT', `/nodes/${nodeId}/share`, { expiresAt });
   assertOk('share enable', r);
   const token = r.json.data?.token;
   if (!token || !r.json.data?.enabled) {
     throw new Error(`share enable: bad payload ${JSON.stringify(r.json)}`);
   }
-  console.log(`    share enabled token=${token.slice(0, 8)}…`);
+  if (!r.json.data?.expiresAt) {
+    throw new Error(`share enable: missing expiresAt ${JSON.stringify(r.json)}`);
+  }
+  console.log(`    share enabled token=${token.slice(0, 8)}… expiresAt=${r.json.data.expiresAt}`);
 
-  // 6) Public read without session
+  // 5b) Past expiresAt → 400
+  r = await a.req('PUT', `/nodes/${nodeId}/share`, {
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+  });
+  if (r.status !== 400 || r.json.success) {
+    throw new Error(`share past expiresAt: expected 400, got ${r.status} ${JSON.stringify(r.json)}`);
+  }
+  console.log('    share past expiresAt rejected');
+
+  // 6) Public read without session (current body after overwrite)
+  r = await a.req('GET', `/nodes/${nodeId}/content`);
+  assertOk('get content after overwrite', r);
+  const currentBody = r.json.data?.bodyMd;
+  if (currentBody !== bodyMdAfterOverwrite) {
+    throw new Error(
+      `content after overwrite mismatch: expected=${JSON.stringify(bodyMdAfterOverwrite)} got=${JSON.stringify(currentBody)}`,
+    );
+  }
   r = await anon.req('GET', `/share/${token}`, undefined, { auth: false });
   assertOk('share public get', r);
-  if (r.json.data?.title !== docTitle || r.json.data?.bodyMd !== bodyMd) {
-    throw new Error('share public content mismatch');
+  if (r.json.data?.title !== docTitle || r.json.data?.bodyMd !== currentBody) {
+    throw new Error(
+      `share public content mismatch: title=${JSON.stringify(r.json.data?.title)} body=${JSON.stringify(r.json.data?.bodyMd)} expectedBody=${JSON.stringify(currentBody)}`,
+    );
   }
   console.log('    public share read ok');
 
@@ -221,11 +351,13 @@ async function main() {
   if (!found) throw new Error('B list kbs: shared kb missing');
   console.log('    B sees kb in list');
 
-  // 10) B can read content
+  // 10) B can read content (current after overwrite)
   r = await b.req('GET', `/nodes/${nodeId}/content`);
   assertOk('B get content', r);
-  if (r.json.data?.bodyMd !== bodyMd) {
-    throw new Error('B get content body mismatch');
+  if (r.json.data?.bodyMd !== bodyMdAfterOverwrite) {
+    throw new Error(
+      `B get content body mismatch: got=${JSON.stringify(r.json.data?.bodyMd)}`,
+    );
   }
   console.log('    B can read content');
 

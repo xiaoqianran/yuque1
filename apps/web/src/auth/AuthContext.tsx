@@ -18,6 +18,10 @@ type AuthState = {
   login: (mobile: string, code: string, nickname?: string) => Promise<void>;
   logout: () => Promise<void>;
   sendSms: (mobile: string) => Promise<void>;
+  updateProfile: (patch: {
+    nickname?: string;
+    email?: string | null;
+  }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -67,9 +71,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.sendSms(mobile);
   }, []);
 
+  const updateProfile = useCallback(
+    async (patch: { nickname?: string; email?: string | null }) => {
+      const u = await authApi.updateMe(patch);
+      setUser(u);
+    },
+    [],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, refresh, login, logout, sendSms }),
-    [user, loading, refresh, login, logout, sendSms],
+    () => ({ user, loading, refresh, login, logout, sendSms, updateProfile }),
+    [user, loading, refresh, login, logout, sendSms, updateProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

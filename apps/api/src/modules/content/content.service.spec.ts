@@ -25,7 +25,15 @@ type Store = {
     createdAt: Date;
     updatedAt: Date;
   }[];
-  revisions: unknown[];
+  revisions: {
+    id: string;
+    nodeId: string;
+    version: number;
+    bodyMd: string;
+    reason: string;
+    createdBy: string;
+    createdAt: Date;
+  }[];
   audits: unknown[];
   users: { id: string; nickname: string }[];
 };
@@ -133,10 +141,52 @@ function mockPrisma(store: Store) {
       },
     },
     contentRevision: {
-      create: async ({ data }: { data: unknown }) => {
-        store.revisions.push(data);
-        return data;
+      create: async ({
+        data,
+      }: {
+        data: {
+          id: string;
+          nodeId: string;
+          version: number;
+          bodyMd: string;
+          reason: string;
+          createdBy: string;
+        };
+      }) => {
+        const row = { ...data, createdAt: new Date() };
+        store.revisions.push(row);
+        return row;
       },
+      findMany: async ({
+        where,
+        take,
+      }: {
+        where: { nodeId: string };
+        orderBy?: unknown;
+        take?: number;
+        select?: unknown;
+      }) => {
+        let rows = store.revisions
+          .filter((r) => r.nodeId === where.nodeId)
+          .slice()
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        if (take != null) rows = rows.slice(0, take);
+        return rows.map((r) => ({
+          id: r.id,
+          version: r.version,
+          reason: r.reason,
+          createdBy: r.createdBy,
+          createdAt: r.createdAt,
+        }));
+      },
+      findFirst: async ({
+        where,
+      }: {
+        where: { id: string; nodeId: string };
+      }) =>
+        store.revisions.find(
+          (r) => r.id === where.id && r.nodeId === where.nodeId,
+        ) ?? null,
     },
     auditLog: {
       create: async ({ data }: { data: unknown }) => {
@@ -147,6 +197,12 @@ function mockPrisma(store: Store) {
     user: {
       findUnique: async ({ where }: { where: { id: string } }) =>
         store.users.find((u) => u.id === where.id) ?? null,
+      findMany: async ({
+        where,
+      }: {
+        where: { id: { in: string[] } };
+        select?: unknown;
+      }) => store.users.filter((u) => where.id.in.includes(u.id)),
     },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(api),
   };
@@ -257,6 +313,56 @@ describe('ContentService', () => {
     assert.equal(store.revisions.length, 1);
     assert.equal(store.audits.length, 1);
     assert.equal(store.contents[0].bodyMd, 'forced');
+  });
+
+  it('listRevisions returns overwrite snapshots without body', async () => {
+    const ow = await svc.overwrite('u1', 'n1', {
+      baseVersion: 1,
+      bodyMd: 'forced',
+    });
+    assert.equal(ow.ok, true);
+    const list = await svc.listRevisions('u1', 'n1');
+    assert.equal(list.ok, true);
+    if (!list.ok) return;
+    assert.equal(list.data.items.length, 1);
+    assert.equal(list.data.items[0].version, 1);
+    assert.equal(list.data.items[0].reason, 'overwrite_on_conflict');
+    assert.equal(list.data.items[0].createdBy?.nickname, 'Alice');
+    assert.equal(
+      'bodyMd' in list.data.items[0],
+      false,
+    );
+  });
+
+  it('getRevision returns pre-overwrite body', async () => {
+    await svc.overwrite('u1', 'n1', {
+      baseVersion: 1,
+      bodyMd: 'forced',
+    });
+    const list = await svc.listRevisions('u1', 'n1');
+    assert.equal(list.ok, true);
+    if (!list.ok) return;
+    const id = list.data.items[0].id;
+    const det = await svc.getRevision('u1', 'n1', id);
+    assert.equal(det.ok, true);
+    if (!det.ok) return;
+    assert.equal(det.data.bodyMd, 'v1 body');
+    assert.equal(det.data.nodeId, 'n1');
+  });
+
+  it('getRevision wrong id is 404', async () => {
+    const det = await svc.getRevision('u1', 'n1', '01HXXXXXXXXXXXXXXXXXXXXXXX');
+    assert.equal(det.ok, false);
+    if (det.ok) return;
+    assert.equal(det.http, 404);
+  });
+
+  it('non-member cannot list revisions', async () => {
+    store.members = [];
+    const list = await svc.listRevisions('u1', 'n1');
+    assert.equal(list.ok, false);
+    if (list.ok) return;
+    assert.equal(list.http, 404);
   });
 
   it('save-as creates new node without touching source', async () => {

@@ -1,6 +1,8 @@
 import { apiRequest } from './client';
 import type {
   ContentMeta,
+  ContentRevision,
+  ContentRevisionBrief,
   DocumentContent,
   KbMember,
   PublicKb,
@@ -23,6 +25,11 @@ export const authApi = {
     }),
   logout: () => apiRequest<null>('/auth/logout', { method: 'POST' }),
   me: () => apiRequest<PublicUser>('/auth/me'),
+  updateMe: (patch: { nickname?: string; email?: string | null }) =>
+    apiRequest<PublicUser>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
 };
 
 export const kbApi = {
@@ -98,12 +105,23 @@ export const contentApi = {
         body: JSON.stringify({ bodyMd, title }),
       },
     ),
+  listRevisions: (nodeId: string) =>
+    apiRequest<{ items: ContentRevisionBrief[] }>(
+      `/nodes/${nodeId}/content/revisions`,
+    ),
+  getRevision: (nodeId: string, revisionId: string) =>
+    apiRequest<ContentRevision>(
+      `/nodes/${nodeId}/content/revisions/${revisionId}`,
+    ),
 };
 
 export const shareApi = {
   get: (nodeId: string) => apiRequest<ShareInfo>(`/nodes/${nodeId}/share`),
-  enable: (nodeId: string) =>
-    apiRequest<ShareInfo>(`/nodes/${nodeId}/share`, { method: 'PUT', body: '{}' }),
+  enable: (nodeId: string, opts?: { expiresAt?: string | null }) =>
+    apiRequest<ShareInfo>(`/nodes/${nodeId}/share`, {
+      method: 'PUT',
+      body: JSON.stringify(opts ?? {}),
+    }),
   disable: (nodeId: string) =>
     apiRequest<null>(`/nodes/${nodeId}/share`, { method: 'DELETE' }),
   publicGet: (token: string) => apiRequest<SharedDocument>(`/share/${token}`),

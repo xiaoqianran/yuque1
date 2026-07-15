@@ -112,6 +112,15 @@ export class ShareService {
           http: 400,
         };
       }
+      // 至少预留 30s 时钟偏差；过期时间必须在未来
+      if (d.getTime() <= Date.now() + 30_000) {
+        return {
+          ok: false,
+          code: 'VALIDATION_ERROR',
+          message: 'expiresAt 必须是未来时间',
+          http: 400,
+        };
+      }
       expiresAt = d;
     }
 
@@ -148,7 +157,10 @@ export class ShareService {
         action: 'share.enable',
         resourceType: 'share',
         resourceId: created.id,
-        metadata: { nodeId },
+        metadata: {
+          nodeId,
+          expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        },
       },
     });
 

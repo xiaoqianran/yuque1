@@ -2,15 +2,37 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
-import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
+import type {
+  ContentRevision,
+  ContentRevisionBrief,
+  PublicKb,
+  PublicNode,
+  ShareInfo,
+} from '../api/types';
 import { MembersPanel } from '../components/MembersPanel';
 import { StatePanel } from '../components/StatePanel';
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  canAutosave,
+  isDirty,
+} from '../ui/autosave';
+import { MarkdownView } from '../ui/markdown';
+import {
+  expiresAtFromPreset,
+  formatShareExpiry,
+  isShareExpired,
+  SHARE_EXPIRY_OPTIONS,
+  type ShareExpiryPreset,
+} from '../ui/shareExpiry';
 import {
   buildMoveParentOptions,
   normalizeKbDescription,
   normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
+  planSiblingReorder,
+  siblingReorderAvailability,
+  type SiblingReorderDirection,
 } from '../ui/treeOps';
 import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
 import { resolveViewPhase } from '../ui/viewState';
@@ -96,10 +118,30 @@ export function KbWorkspacePage() {
   const [kbNameDraft, setKbNameDraft] = useState('');
   const [kbDescDraft, setKbDescDraft] = useState('');
   const [kbSaving, setKbSaving] = useState(false);
+  const [shareExpiryPreset, setShareExpiryPreset] =
+    useState<ShareExpiryPreset>('never');
+  const [editorMode, setEditorMode] = useState<'edit' | 'preview'>('edit');
+  const [revisions, setRevisions] = useState<ContentRevisionBrief[] | null>(null);
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionPreview, setRevisionPreview] = useState<ContentRevision | null>(
+    null,
+  );
+  const [lastSavedBody, setLastSavedBody] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
     () => (selected ? buildMoveParentOptions(nodes, selected.id) : []),
+    [nodes, selected],
+  );
+  const canWrite = kb != null && kb.role !== 'reader';
+  const dirty = isDirty(body, lastSavedBody);
+  const reorderAvail = useMemo(
+    () =>
+      selected
+        ? siblingReorderAvailability(nodes, selected.id)
+        : { canUp: false, canDown: false },
     [nodes, selected],
   );
 
@@ -136,6 +178,12 @@ export function KbWorkspacePage() {
     setShare(null);
     setStatus(null);
     setCopyHint(null);
+    setRevisions(null);
+    setRevisionsOpen(false);
+    setRevisionPreview(null);
+    setEditorMode('edit');
+    setLastSavedBody(null);
+    setSaving(false);
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -146,6 +194,7 @@ export function KbWorkspacePage() {
       const c = await contentApi.get(n.id);
       setBody(c.bodyMd);
       setVersion(c.version);
+      setLastSavedBody(c.bodyMd);
       const s = await shareApi.get(n.id);
       setShare(s);
     } catch (e) {
@@ -172,32 +221,75 @@ export function KbWorkspacePage() {
     }
   }
 
-  async function save() {
-    if (!selected || selected.type !== 'doc' || version == null) return;
-    setStatus('保存中…');
-    setConflict(null);
-    try {
-      const meta = await contentApi.put(selected.id, version, body);
-      setVersion(meta.version);
-      setStatus(`已保存 v${meta.version}`);
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'DOC_VERSION_CONFLICT') {
-        const serverVersion = Number(
-          (e.details as { serverVersion?: number } | null)?.serverVersion ?? 0,
-        );
-        setConflict({ serverVersion });
-        setStatus('版本冲突：请选择处理方式');
-      } else {
-        setStatus(e instanceof ApiError ? e.message : '保存失败');
+  const save = useCallback(
+    async (opts?: { auto?: boolean }) => {
+      const auto = opts?.auto === true;
+      if (!selected || selected.type !== 'doc' || version == null) return;
+      if (!canWrite) return;
+      if (conflict && auto) return;
+
+      setSaving(true);
+      if (!auto) setConflict(null);
+      setStatus(auto ? '自动保存中…' : '保存中…');
+      try {
+        const meta = await contentApi.put(selected.id, version, body);
+        setVersion(meta.version);
+        setLastSavedBody(body);
+        setStatus(auto ? `已自动保存 v${meta.version}` : `已保存 v${meta.version}`);
+        setConflict(null);
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'DOC_VERSION_CONFLICT') {
+          const serverVersion = Number(
+            (e.details as { serverVersion?: number } | null)?.serverVersion ?? 0,
+          );
+          setConflict({ serverVersion });
+          setStatus('版本冲突：请选择处理方式（已暂停自动保存）');
+        } else {
+          setStatus(e instanceof ApiError ? e.message : '保存失败');
+        }
+      } finally {
+        setSaving(false);
       }
-    }
-  }
+    },
+    [selected, version, body, canWrite, conflict],
+  );
+
+  // Debounced autosave; paused while conflict is open (PRD).
+  useEffect(() => {
+    if (docLoading) return;
+    const gate = canAutosave({
+      hasDoc: selected?.type === 'doc',
+      version,
+      body,
+      lastSavedBody,
+      hasConflict: conflict != null,
+      isSaving: saving,
+      canWrite,
+    });
+    if (!gate.allow) return;
+    const t = window.setTimeout(() => {
+      void save({ auto: true });
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [
+    body,
+    version,
+    lastSavedBody,
+    conflict,
+    saving,
+    selected?.type,
+    selected?.id,
+    docLoading,
+    canWrite,
+    save,
+  ]);
 
   async function reloadServer() {
     if (!selected || selected.type !== 'doc') return;
     const c = await contentApi.get(selected.id);
     setBody(c.bodyMd);
     setVersion(c.version);
+    setLastSavedBody(c.bodyMd);
     setConflict(null);
     setStatus(`已加载服务器 v${c.version}`);
   }
@@ -206,8 +298,45 @@ export function KbWorkspacePage() {
     if (!selected || !conflict) return;
     const meta = await contentApi.overwrite(selected.id, conflict.serverVersion, body);
     setVersion(meta.version);
+    setLastSavedBody(body);
     setConflict(null);
     setStatus(`已覆盖保存 v${meta.version}`);
+    if (revisionsOpen) {
+      void loadRevisions();
+    }
+  }
+
+  async function loadRevisions() {
+    if (!selected || selected.type !== 'doc') return;
+    setRevisionsLoading(true);
+    try {
+      const r = await contentApi.listRevisions(selected.id);
+      setRevisions(r.items);
+      setRevisionsOpen(true);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '加载历史快照失败');
+    } finally {
+      setRevisionsLoading(false);
+    }
+  }
+
+  async function openRevision(id: string) {
+    if (!selected) return;
+    try {
+      const det = await contentApi.getRevision(selected.id, id);
+      setRevisionPreview(det);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '打开快照失败');
+    }
+  }
+
+  function applyRevisionToEditor() {
+    if (!revisionPreview) return;
+    setBody(revisionPreview.bodyMd);
+    setRevisionPreview(null);
+    setStatus(
+      `已将快照 v${revisionPreview.version} 填入编辑器（未保存，当前服务器版本仍为 v${version ?? '—'}）`,
+    );
   }
 
   async function saveAsCopy() {
@@ -228,12 +357,30 @@ export function KbWorkspacePage() {
         setCopyHint(null);
         setStatus('已关闭分享');
       } else {
-        const s = await shareApi.enable(selected.id);
+        const expiresAt = expiresAtFromPreset(shareExpiryPreset);
+        const s = await shareApi.enable(
+          selected.id,
+          expiresAt === null ? { expiresAt: null } : { expiresAt },
+        );
         setShare(s);
-        setStatus('已开启分享');
+        setStatus(
+          expiresAt ? `已开启分享（${formatShareExpiry(s.expiresAt)}）` : '已开启分享（永久）',
+        );
       }
     } catch (e) {
       setStatus(e instanceof ApiError ? e.message : '分享操作失败');
+    }
+  }
+
+  async function applyShareExpiry() {
+    if (!selected || selected.type !== 'doc' || !share?.enabled) return;
+    try {
+      const expiresAt = expiresAtFromPreset(shareExpiryPreset);
+      const s = await shareApi.enable(selected.id, { expiresAt });
+      setShare(s);
+      setStatus(`已更新分享：${formatShareExpiry(s.expiresAt)}`);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '更新有效期失败');
     }
   }
 
@@ -287,6 +434,31 @@ export function KbWorkspacePage() {
       await refreshTree();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '移动失败');
+    }
+  }
+
+  async function reorderSibling(direction: SiblingReorderDirection) {
+    if (!selected) return;
+    const plan = planSiblingReorder(nodes, selected.id, direction);
+    if (!plan.ok) {
+      setStatus(plan.message);
+      return;
+    }
+    try {
+      for (const m of plan.moves) {
+        await treeApi.move(m.id, m.parentId, m.sortOrder);
+      }
+      const data = await treeApi.list(kbId);
+      setNodes(data.items);
+      const me = data.items.find((n) => n.id === selected.id);
+      if (me) {
+        setSelected(me);
+        setMoveParentId(me.parentId ?? '');
+      }
+      setStatus(direction === 'up' ? '已上移' : '已下移');
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '调整顺序失败');
     }
   }
 
@@ -555,6 +727,27 @@ export function KbWorkspacePage() {
                   </button>
                 </div>
               </label>
+              <div className="row tree-reorder">
+                <span className="muted">同级顺序</span>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={!reorderAvail.canUp}
+                  onClick={() => void reorderSibling('up')}
+                  title={reorderAvail.canUp ? '与上一个同级节点交换顺序' : '已在同级最前'}
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={!reorderAvail.canDown}
+                  onClick={() => void reorderSibling('down')}
+                  title={reorderAvail.canDown ? '与下一个同级节点交换顺序' : '已在同级最后'}
+                >
+                  下移
+                </button>
+              </div>
               <button
                 type="button"
                 className="btn secondary small danger-outline"
@@ -614,15 +807,89 @@ export function KbWorkspacePage() {
               <h2>{selected.title}</h2>
               <div className="row">
                 <span className="badge">v{version ?? '—'}</span>
-                <button type="button" className="btn primary small" onClick={() => void save()}>
+                {dirty && !conflict && (
+                  <span className="badge badge-warn" title="本地有未同步修改">
+                    未保存
+                  </span>
+                )}
+                {saving && <span className="muted">自动保存中…</span>}
+                <div className="seg-control" role="group" aria-label="编辑模式">
+                  <button
+                    type="button"
+                    className={`btn small ${editorMode === 'edit' ? 'primary' : 'secondary'}`}
+                    onClick={() => setEditorMode('edit')}
+                    aria-pressed={editorMode === 'edit'}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn small ${editorMode === 'preview' ? 'primary' : 'secondary'}`}
+                    onClick={() => setEditorMode('preview')}
+                    aria-pressed={editorMode === 'preview'}
+                  >
+                    预览
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="btn primary small"
+                  disabled={!canWrite || saving || version == null}
+                  onClick={() => void save({ auto: false })}
+                >
                   保存
                 </button>
+                <label className="share-expiry-inline">
+                  <span className="muted">有效期</span>
+                  <select
+                    className="input small"
+                    value={shareExpiryPreset}
+                    onChange={(e) =>
+                      setShareExpiryPreset(e.target.value as ShareExpiryPreset)
+                    }
+                    aria-label="分享有效期"
+                  >
+                    {SHARE_EXPIRY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   type="button"
                   className="btn secondary small"
                   onClick={() => void toggleShare()}
                 >
                   {share?.enabled ? '关闭分享' : '开启分享'}
+                </button>
+                {share?.enabled && (
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => void applyShareExpiry()}
+                  >
+                    更新有效期
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => {
+                    if (revisionsOpen) {
+                      setRevisionsOpen(false);
+                      setRevisionPreview(null);
+                    } else {
+                      void loadRevisions();
+                    }
+                  }}
+                  disabled={revisionsLoading}
+                >
+                  {revisionsLoading
+                    ? '加载中…'
+                    : revisionsOpen
+                      ? '收起快照'
+                      : '历史快照'}
                 </button>
                 <button
                   type="button"
@@ -634,6 +901,72 @@ export function KbWorkspacePage() {
               </div>
             </div>
             {status && <p className="status-line">{status}</p>}
+            {revisionsOpen && (
+              <div className="revisions-panel card" aria-label="覆盖前历史快照">
+                <div className="row" style={{ width: '100%' }}>
+                  <strong>历史快照</strong>
+                  <span className="muted">
+                    仅强制覆盖时写入；点击可预览，可填入编辑器后自行保存
+                  </span>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => void loadRevisions()}
+                    disabled={revisionsLoading}
+                  >
+                    刷新
+                  </button>
+                </div>
+                {!revisions?.length ? (
+                  <p className="muted">暂无覆盖快照</p>
+                ) : (
+                  <ul className="revisions-list">
+                    {revisions.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className={`revisions-item${
+                            revisionPreview?.id === item.id ? ' active' : ''
+                          }`}
+                          onClick={() => void openRevision(item.id)}
+                        >
+                          <span className="badge">v{item.version}</span>
+                          <span className="muted">
+                            {new Date(item.createdAt).toLocaleString()}
+                          </span>
+                          <span className="muted">
+                            {item.createdBy?.nickname ?? '未知'}
+                          </span>
+                          <span className="hint">{item.reason}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {revisionPreview && (
+                  <div className="revision-preview">
+                    <div className="row" style={{ width: '100%' }}>
+                      <strong>快照 v{revisionPreview.version}</strong>
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={() => applyRevisionToEditor()}
+                      >
+                        填入编辑器
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        onClick={() => setRevisionPreview(null)}
+                      >
+                        关闭预览
+                      </button>
+                    </div>
+                    <pre className="revision-body">{revisionPreview.bodyMd}</pre>
+                  </div>
+                )}
+              </div>
+            )}
             {conflict && (
               <div className="conflict-banner" role="alert">
                 <strong>版本冲突</strong>
@@ -660,9 +993,16 @@ export function KbWorkspacePage() {
               </div>
             )}
             {publicShareUrl && share?.token && (
-              <div className="share-link">
+              <div
+                className={`share-link${isShareExpired(share.expiresAt) ? ' share-link--expired' : ''}`}
+              >
                 <div className="row" style={{ width: '100%' }}>
                   <span className="share-link-label">公开链接</span>
+                  {isShareExpired(share.expiresAt) ? (
+                    <span className="badge badge-warn">已过期</span>
+                  ) : (
+                    <span className="muted">{formatShareExpiry(share.expiresAt)}</span>
+                  )}
                   <button type="button" className="btn secondary small" onClick={() => void copyShareUrl()}>
                     复制链接
                   </button>
@@ -671,12 +1011,18 @@ export function KbWorkspacePage() {
                 <a className="share-link-url" href={publicShareUrl} target="_blank" rel="noreferrer">
                   {publicShareUrl}
                 </a>
-                <p className="hint">也可在站内打开： <Link to={`/s/${share.token}`}>预览分享页</Link></p>
+                {isShareExpired(share.expiresAt) ? (
+                  <p className="hint warn">链接已过期，公开访问返回 404。可「更新有效期」或关闭后重新开启。</p>
+                ) : (
+                  <p className="hint">
+                    也可在站内打开： <Link to={`/s/${share.token}`}>预览分享页</Link>
+                  </p>
+                )}
               </div>
             )}
             {docLoading ? (
               <StatePanel phase="loading" title="加载正文" description="读取文档内容与版本…" />
-            ) : (
+            ) : editorMode === 'edit' ? (
               <textarea
                 className="editor"
                 value={body}
@@ -684,6 +1030,13 @@ export function KbWorkspacePage() {
                 placeholder="在此编写 Markdown 正文…"
                 spellCheck={false}
                 aria-label="文档正文"
+                readOnly={!canWrite}
+              />
+            ) : (
+              <MarkdownView
+                source={body}
+                className="md-preview editor-preview"
+                emptyLabel="（空文档 — 切换到编辑开始写）"
               />
             )}
           </>

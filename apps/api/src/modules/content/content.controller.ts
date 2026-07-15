@@ -38,6 +38,33 @@ export class ContentController {
     return fail(result.code, result.message, result.details ?? null);
   }
 
+  @Get(':nodeId/content/revisions')
+  async listRevisions(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('nodeId') nodeId: string,
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.content.listRevisions(userId, nodeId);
+    if (!result.ok) return this.failResult(res, result);
+    return ok(result.data);
+  }
+
+  @Get(':nodeId/content/revisions/:revisionId')
+  async getRevision(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param('nodeId') nodeId: string,
+    @Param('revisionId') revisionId: string,
+  ) {
+    const userId = await this.requireUser(req, res);
+    if (!userId) return fail('UNAUTHORIZED', '未登录');
+    const result = await this.content.getRevision(userId, nodeId, revisionId);
+    if (!result.ok) return this.failResult(res, result);
+    return ok(result.data);
+  }
+
   @Get(':nodeId/content')
   async get(
     @Req() req: Request,
