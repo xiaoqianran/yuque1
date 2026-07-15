@@ -6,6 +6,8 @@ import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
 import { StatePanel } from '../components/StatePanel';
 import {
   buildMoveParentOptions,
+  normalizeKbDescription,
+  normalizeKbName,
   normalizeRenameTitle,
   normalizeSearchQuery,
 } from '../ui/treeOps';
@@ -90,6 +92,9 @@ export function KbWorkspacePage() {
   const [searchHits, setSearchHits] = useState<PublicNode[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [moveParentId, setMoveParentId] = useState('');
+  const [kbNameDraft, setKbNameDraft] = useState('');
+  const [kbDescDraft, setKbDescDraft] = useState('');
+  const [kbSaving, setKbSaving] = useState(false);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -108,6 +113,8 @@ export function KbWorkspacePage() {
     try {
       const [k, t] = await Promise.all([kbApi.get(kbId), treeApi.list(kbId)]);
       setKb(k);
+      setKbNameDraft(k.name);
+      setKbDescDraft(k.description ?? '');
       setNodes(t.items);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '加载知识库失败');
@@ -302,6 +309,40 @@ export function KbWorkspacePage() {
     }
   }
 
+  async function saveKbMeta() {
+    if (!kb) return;
+    if (kb.role === 'reader') {
+      setError('只读成员不能修改知识库');
+      return;
+    }
+    const nameParsed = normalizeKbName(kbNameDraft);
+    if (!nameParsed.ok) {
+      setError(nameParsed.message);
+      return;
+    }
+    const descParsed = normalizeKbDescription(kbDescDraft);
+    if (!descParsed.ok) {
+      setError(descParsed.message);
+      return;
+    }
+    setKbSaving(true);
+    setError(null);
+    try {
+      const updated = await kbApi.update(kb.id, {
+        name: nameParsed.name,
+        description: descParsed.description,
+      });
+      setKb(updated);
+      setKbNameDraft(updated.name);
+      setKbDescDraft(updated.description ?? '');
+      setStatus('知识库信息已保存');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '保存知识库失败');
+    } finally {
+      setKbSaving(false);
+    }
+  }
+
   async function copyShareUrl() {
     if (!share?.token) return;
     const url = buildPublicShareUrl(share.token);
@@ -361,6 +402,39 @@ export function KbWorkspacePage() {
             ← 全部知识库
           </Link>
           <h2>{kb.name}</h2>
+          {kb.role !== 'reader' && (
+            <div className="kb-meta-edit">
+              <label className="field-label">
+                库名称
+                <input
+                  value={kbNameDraft}
+                  onChange={(e) => setKbNameDraft(e.target.value)}
+                  maxLength={128}
+                  aria-label="知识库名称"
+                />
+              </label>
+              <label className="field-label">
+                简介
+                <textarea
+                  className="field-textarea"
+                  value={kbDescDraft}
+                  onChange={(e) => setKbDescDraft(e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  aria-label="知识库简介"
+                  placeholder="可选"
+                />
+              </label>
+              <button
+                type="button"
+                className="btn secondary small"
+                disabled={kbSaving}
+                onClick={() => void saveKbMeta()}
+              >
+                {kbSaving ? '保存中…' : '保存库信息'}
+              </button>
+            </div>
+          )}
         </div>
         <div className="tree-actions">
           <div className="row">

@@ -5,8 +5,13 @@ import { ApiError } from '../api/types';
 import type { PublicKb } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatePanel } from '../components/StatePanel';
+import { normalizeKbName } from '../ui/treeOps';
 import { confirmDeleteKbMessage } from '../ui/urls';
 import { resolveKbListPresentation, roleLabel } from '../ui/viewState';
+
+function canWriteKb(role: PublicKb['role']): boolean {
+  return role === 'owner' || role === 'editor';
+}
 
 export function KbListPage() {
   const { user, logout } = useAuth();
@@ -17,6 +22,9 @@ export function KbListPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renamingBusy, setRenamingBusy] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -59,11 +67,52 @@ export function KbListPage() {
     setActionError(null);
     try {
       await kbApi.remove(kb.id);
+      if (renamingId === kb.id) {
+        setRenamingId(null);
+        setRenameDraft('');
+      }
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : '删除失败');
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function startRename(kb: PublicKb, e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setRenamingId(kb.id);
+    setRenameDraft(kb.name);
+    setActionError(null);
+  }
+
+  function cancelRename(e?: MouseEvent) {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setRenamingId(null);
+    setRenameDraft('');
+  }
+
+  async function submitRename(kb: PublicKb, e: FormEvent | MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const parsed = normalizeKbName(renameDraft);
+    if (!parsed.ok) {
+      setActionError(parsed.message);
+      return;
+    }
+    setRenamingBusy(true);
+    setActionError(null);
+    try {
+      await kbApi.update(kb.id, { name: parsed.name });
+      setRenamingId(null);
+      setRenameDraft('');
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : '重命名失败');
+    } finally {
+      setRenamingBusy(false);
     }
   }
 
@@ -138,23 +187,59 @@ export function KbListPage() {
         <ul className="kb-list">
           {items.map((kb) => (
             <li key={kb.id}>
-              <div className="kb-item-row">
-                <Link to={`/kbs/${kb.id}`} className="kb-item">
-                  <strong>{kb.name}</strong>
-                  <span className="role-pill">{roleLabel(kb.role)}</span>
-                </Link>
-                {kb.role === 'owner' && (
+              {renamingId === kb.id ? (
+                <form
+                  className="kb-item-row kb-rename-row"
+                  onSubmit={(ev) => void submitRename(kb, ev)}
+                >
+                  <input
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    maxLength={128}
+                    aria-label="新知识库名称"
+                    autoFocus
+                  />
+                  <button type="submit" className="btn primary small" disabled={renamingBusy}>
+                    {renamingBusy ? '保存中…' : '保存'}
+                  </button>
                   <button
                     type="button"
-                    className="btn secondary small danger-outline"
-                    disabled={deletingId === kb.id}
-                    onClick={(ev) => void onDeleteKb(kb, ev)}
-                    aria-label={`删除知识库 ${kb.name}`}
+                    className="btn secondary small"
+                    disabled={renamingBusy}
+                    onClick={(ev) => cancelRename(ev)}
                   >
-                    {deletingId === kb.id ? '删除中…' : '删除'}
+                    取消
                   </button>
-                )}
-              </div>
+                </form>
+              ) : (
+                <div className="kb-item-row">
+                  <Link to={`/kbs/${kb.id}`} className="kb-item">
+                    <strong>{kb.name}</strong>
+                    <span className="role-pill">{roleLabel(kb.role)}</span>
+                  </Link>
+                  {canWriteKb(kb.role) && (
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      onClick={(ev) => startRename(kb, ev)}
+                      aria-label={`重命名知识库 ${kb.name}`}
+                    >
+                      重命名
+                    </button>
+                  )}
+                  {kb.role === 'owner' && (
+                    <button
+                      type="button"
+                      className="btn secondary small danger-outline"
+                      disabled={deletingId === kb.id}
+                      onClick={(ev) => void onDeleteKb(kb, ev)}
+                      aria-label={`删除知识库 ${kb.name}`}
+                    >
+                      {deletingId === kb.id ? '删除中…' : '删除'}
+                    </button>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
