@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
@@ -16,7 +16,11 @@ import {
   canAutosave,
   isDirty,
 } from '../ui/autosave';
-import { MarkdownView } from '../ui/markdown';
+import {
+  extractOutline,
+  focusTextareaLine,
+  MarkdownView,
+} from '../ui/markdown';
 import {
   expiresAtFromPreset,
   formatShareExpiry,
@@ -129,6 +133,9 @@ export function KbWorkspacePage() {
   );
   const [lastSavedBody, setLastSavedBody] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(true);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -137,6 +144,10 @@ export function KbWorkspacePage() {
   );
   const canWrite = kb != null && kb.role !== 'reader';
   const dirty = isDirty(body, lastSavedBody);
+  const outline = useMemo(
+    () => (selected?.type === 'doc' ? extractOutline(body) : []),
+    [selected?.type, body],
+  );
   const reorderAvail = useMemo(
     () =>
       selected
@@ -328,6 +339,21 @@ export function KbWorkspacePage() {
     } catch (e) {
       setStatus(e instanceof ApiError ? e.message : '打开快照失败');
     }
+  }
+
+  function jumpToOutline(item: { id: string; line: number }) {
+    if (editorMode === 'preview') {
+      setOutlineOpen(true);
+      // ensure preview painted with ids
+      requestAnimationFrame(() => {
+        const root = previewRef.current;
+        const el = root?.querySelector(`#${CSS.escape(item.id)}`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return;
+    }
+    const ta = editorRef.current;
+    if (ta) focusTextareaLine(ta, item.line);
   }
 
   function applyRevisionToEditor() {
@@ -833,6 +859,16 @@ export function KbWorkspacePage() {
                 </div>
                 <button
                   type="button"
+                  className="btn secondary small"
+                  onClick={() => setOutlineOpen((v) => !v)}
+                  aria-pressed={outlineOpen}
+                  title="根据 # 标题生成大纲"
+                >
+                  {outlineOpen ? '收起大纲' : '大纲'}
+                  {outline.length > 0 ? ` (${outline.length})` : ''}
+                </button>
+                <button
+                  type="button"
                   className="btn primary small"
                   disabled={!canWrite || saving || version == null}
                   onClick={() => void save({ auto: false })}
@@ -1022,22 +1058,61 @@ export function KbWorkspacePage() {
             )}
             {docLoading ? (
               <StatePanel phase="loading" title="加载正文" description="读取文档内容与版本…" />
-            ) : editorMode === 'edit' ? (
-              <textarea
-                className="editor"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="在此编写 Markdown 正文…"
-                spellCheck={false}
-                aria-label="文档正文"
-                readOnly={!canWrite}
-              />
             ) : (
-              <MarkdownView
-                source={body}
-                className="md-preview editor-preview"
-                emptyLabel="（空文档 — 切换到编辑开始写）"
-              />
+              <div
+                className={`editor-body-row${outlineOpen ? ' editor-body-row--outline' : ''}`}
+              >
+                <div className="editor-main">
+                  {editorMode === 'edit' ? (
+                    <textarea
+                      ref={editorRef}
+                      className="editor"
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      placeholder="在此编写 Markdown 正文…"
+                      spellCheck={false}
+                      aria-label="文档正文"
+                      readOnly={!canWrite}
+                    />
+                  ) : (
+                    <div ref={previewRef} className="editor-preview-wrap">
+                      <MarkdownView
+                        source={body}
+                        className="md-preview editor-preview"
+                        emptyLabel="（空文档 — 切换到编辑开始写）"
+                      />
+                    </div>
+                  )}
+                </div>
+                {outlineOpen && (
+                  <aside className="doc-outline" aria-label="文档大纲">
+                    <div className="doc-outline-head">
+                      <strong>大纲</strong>
+                      <span className="muted">
+                        {outline.length ? `${outline.length} 个标题` : '无标题'}
+                      </span>
+                    </div>
+                    {!outline.length ? (
+                      <p className="hint">使用 # / ## / ### 标题后显示大纲</p>
+                    ) : (
+                      <ul className="doc-outline-list">
+                        {outline.map((item) => (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              className={`doc-outline-item level-${item.level}`}
+                              onClick={() => jumpToOutline(item)}
+                              title={`第 ${item.line + 1} 行`}
+                            >
+                              {item.text}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </aside>
+                )}
+              </div>
             )}
           </>
         )}
