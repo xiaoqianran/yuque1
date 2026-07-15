@@ -66,6 +66,14 @@ export type SharedDocument = {
   updatedAt: string | null;
 };
 
+export type KbMember = {
+  userId: string;
+  mobileE164: string;
+  nickname: string;
+  role: 'owner' | 'editor' | 'reader';
+  createdAt: string;
+};
+
 export class ApiError extends Error {
   readonly code: string;
   readonly http: number;
