@@ -696,8 +696,42 @@ a:focus-visible {
   padding: 0;
 }
 
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tree-twistie,
+.tree-twistie-spacer {
+  flex-shrink: 0;
+  width: 18px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--color-text-secondary);
+}
+
+.tree-twistie {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+}
+
+.tree-twistie:hover {
+  background: var(--color-bg-muted);
+  color: var(--color-text);
+}
+
 .tree-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
@@ -714,6 +748,12 @@ a:focus-visible {
     background var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease);
+}
+
+.tree-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree-item:hover {
