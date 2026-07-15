@@ -75,3 +75,20 @@ jobs:
 
       - name: CI (typecheck, test, build)
         run: pnpm run check:node && pnpm run check:docs && pnpm run typecheck && pnpm run test && pnpm run build
+
+      - name: Business E2E smoke (API)
+        run: |
+          set -euo pipefail
+          API_PORT=3000 node apps/api/dist/main.js > /tmp/ci-api-e2e.log 2>&1 &
+          PID=$!
+          cleanup() { kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3000/api/v1/ready >/dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:3000/api/v1/ready | tee /tmp/ci-ready.json
+          grep -q '"postgres":true' /tmp/ci-ready.json
+          node scripts/smoke-e2e-api.mjs http://127.0.0.1:3000
