@@ -180,6 +180,38 @@ async function main() {
   }
   console.log('    content saved v2');
 
+  // 4b) Overwrite → content_revisions
+  r = await a.req('POST', `/nodes/${nodeId}/content/overwrite`, {
+    baseVersion: 2,
+    bodyMd: `${bodyMd}\n\noverwritten`,
+  });
+  assertOk('overwrite content', r);
+  if (r.json.data?.version !== 3) {
+    throw new Error(`overwrite: expected version 3, got ${r.json.data?.version}`);
+  }
+  console.log('    content overwritten v3');
+
+  // 4c) List revisions
+  r = await a.req('GET', `/nodes/${nodeId}/content/revisions`);
+  assertOk('list revisions', r);
+  const revItems = r.json.data?.items;
+  if (!Array.isArray(revItems) || revItems.length < 1) {
+    throw new Error(`list revisions: empty ${JSON.stringify(r.json)}`);
+  }
+  if (revItems[0].version !== 2 || revItems[0].reason !== 'overwrite_on_conflict') {
+    throw new Error(`list revisions: unexpected item ${JSON.stringify(revItems[0])}`);
+  }
+  const revisionId = revItems[0].id;
+  console.log(`    revisions listed n=${revItems.length} id=${revisionId}`);
+
+  // 4d) Get revision detail (pre-overwrite body)
+  r = await a.req('GET', `/nodes/${nodeId}/content/revisions/${revisionId}`);
+  assertOk('get revision', r);
+  if (r.json.data?.bodyMd !== bodyMd || r.json.data?.version !== 2) {
+    throw new Error(`get revision: body mismatch ${JSON.stringify(r.json)}`);
+  }
+  console.log('    revision detail ok');
+
   // 5) Enable share with future expiresAt
   const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
   r = await a.req('PUT', `/nodes/${nodeId}/share`, { expiresAt });

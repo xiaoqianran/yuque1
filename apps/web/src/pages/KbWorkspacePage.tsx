@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
-import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
+import type {
+  ContentRevision,
+  ContentRevisionBrief,
+  PublicKb,
+  PublicNode,
+  ShareInfo,
+} from '../api/types';
 import { MembersPanel } from '../components/MembersPanel';
 import { StatePanel } from '../components/StatePanel';
 import {
@@ -105,6 +111,12 @@ export function KbWorkspacePage() {
   const [kbSaving, setKbSaving] = useState(false);
   const [shareExpiryPreset, setShareExpiryPreset] =
     useState<ShareExpiryPreset>('never');
+  const [revisions, setRevisions] = useState<ContentRevisionBrief[] | null>(null);
+  const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
+  const [revisionPreview, setRevisionPreview] = useState<ContentRevision | null>(
+    null,
+  );
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -145,6 +157,9 @@ export function KbWorkspacePage() {
     setShare(null);
     setStatus(null);
     setCopyHint(null);
+    setRevisions(null);
+    setRevisionsOpen(false);
+    setRevisionPreview(null);
     if (n.type !== 'doc') {
       setBody('');
       setVersion(null);
@@ -217,6 +232,42 @@ export function KbWorkspacePage() {
     setVersion(meta.version);
     setConflict(null);
     setStatus(`已覆盖保存 v${meta.version}`);
+    if (revisionsOpen) {
+      void loadRevisions();
+    }
+  }
+
+  async function loadRevisions() {
+    if (!selected || selected.type !== 'doc') return;
+    setRevisionsLoading(true);
+    try {
+      const r = await contentApi.listRevisions(selected.id);
+      setRevisions(r.items);
+      setRevisionsOpen(true);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '加载历史快照失败');
+    } finally {
+      setRevisionsLoading(false);
+    }
+  }
+
+  async function openRevision(id: string) {
+    if (!selected) return;
+    try {
+      const det = await contentApi.getRevision(selected.id, id);
+      setRevisionPreview(det);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '打开快照失败');
+    }
+  }
+
+  function applyRevisionToEditor() {
+    if (!revisionPreview) return;
+    setBody(revisionPreview.bodyMd);
+    setRevisionPreview(null);
+    setStatus(
+      `已将快照 v${revisionPreview.version} 填入编辑器（未保存，当前服务器版本仍为 v${version ?? '—'}）`,
+    );
   }
 
   async function saveAsCopy() {
@@ -679,6 +730,25 @@ export function KbWorkspacePage() {
                 )}
                 <button
                   type="button"
+                  className="btn secondary small"
+                  onClick={() => {
+                    if (revisionsOpen) {
+                      setRevisionsOpen(false);
+                      setRevisionPreview(null);
+                    } else {
+                      void loadRevisions();
+                    }
+                  }}
+                  disabled={revisionsLoading}
+                >
+                  {revisionsLoading
+                    ? '加载中…'
+                    : revisionsOpen
+                      ? '收起快照'
+                      : '历史快照'}
+                </button>
+                <button
+                  type="button"
                   className="btn secondary small danger-outline"
                   onClick={() => void deleteSelected()}
                 >
@@ -687,6 +757,72 @@ export function KbWorkspacePage() {
               </div>
             </div>
             {status && <p className="status-line">{status}</p>}
+            {revisionsOpen && (
+              <div className="revisions-panel card" aria-label="覆盖前历史快照">
+                <div className="row" style={{ width: '100%' }}>
+                  <strong>历史快照</strong>
+                  <span className="muted">
+                    仅强制覆盖时写入；点击可预览，可填入编辑器后自行保存
+                  </span>
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => void loadRevisions()}
+                    disabled={revisionsLoading}
+                  >
+                    刷新
+                  </button>
+                </div>
+                {!revisions?.length ? (
+                  <p className="muted">暂无覆盖快照</p>
+                ) : (
+                  <ul className="revisions-list">
+                    {revisions.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className={`revisions-item${
+                            revisionPreview?.id === item.id ? ' active' : ''
+                          }`}
+                          onClick={() => void openRevision(item.id)}
+                        >
+                          <span className="badge">v{item.version}</span>
+                          <span className="muted">
+                            {new Date(item.createdAt).toLocaleString()}
+                          </span>
+                          <span className="muted">
+                            {item.createdBy?.nickname ?? '未知'}
+                          </span>
+                          <span className="hint">{item.reason}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {revisionPreview && (
+                  <div className="revision-preview">
+                    <div className="row" style={{ width: '100%' }}>
+                      <strong>快照 v{revisionPreview.version}</strong>
+                      <button
+                        type="button"
+                        className="btn primary small"
+                        onClick={() => applyRevisionToEditor()}
+                      >
+                        填入编辑器
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        onClick={() => setRevisionPreview(null)}
+                      >
+                        关闭预览
+                      </button>
+                    </div>
+                    <pre className="revision-body">{revisionPreview.bodyMd}</pre>
+                  </div>
+                )}
+              </div>
+            )}
             {conflict && (
               <div className="conflict-banner" role="alert">
                 <strong>版本冲突</strong>
