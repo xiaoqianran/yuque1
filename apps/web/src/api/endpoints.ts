@@ -102,8 +102,11 @@ export const contentApi = {
 
 export const shareApi = {
   get: (nodeId: string) => apiRequest<ShareInfo>(`/nodes/${nodeId}/share`),
-  enable: (nodeId: string) =>
-    apiRequest<ShareInfo>(`/nodes/${nodeId}/share`, { method: 'PUT', body: '{}' }),
+  enable: (nodeId: string, opts?: { expiresAt?: string | null }) =>
+    apiRequest<ShareInfo>(`/nodes/${nodeId}/share`, {
+      method: 'PUT',
+      body: JSON.stringify(opts ?? {}),
+    }),
   disable: (nodeId: string) =>
     apiRequest<null>(`/nodes/${nodeId}/share`, { method: 'DELETE' }),
   publicGet: (token: string) => apiRequest<SharedDocument>(`/share/${token}`),
