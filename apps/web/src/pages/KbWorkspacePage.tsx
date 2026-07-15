@@ -12,6 +12,13 @@ import {
   normalizeRenameTitle,
   normalizeSearchQuery,
 } from '../ui/treeOps';
+import {
+  expiresAtFromPreset,
+  formatShareExpiry,
+  isShareExpired,
+  SHARE_EXPIRY_OPTIONS,
+  type ShareExpiryPreset,
+} from '../ui/shareExpiry';
 import { buildPublicShareUrl, confirmDeleteNodeMessage } from '../ui/urls';
 import { resolveViewPhase } from '../ui/viewState';
 
@@ -96,6 +103,8 @@ export function KbWorkspacePage() {
   const [kbNameDraft, setKbNameDraft] = useState('');
   const [kbDescDraft, setKbDescDraft] = useState('');
   const [kbSaving, setKbSaving] = useState(false);
+  const [shareExpiryPreset, setShareExpiryPreset] =
+    useState<ShareExpiryPreset>('never');
 
   const childMap = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const moveOptions = useMemo(
@@ -228,12 +237,30 @@ export function KbWorkspacePage() {
         setCopyHint(null);
         setStatus('已关闭分享');
       } else {
-        const s = await shareApi.enable(selected.id);
+        const expiresAt = expiresAtFromPreset(shareExpiryPreset);
+        const s = await shareApi.enable(
+          selected.id,
+          expiresAt === null ? { expiresAt: null } : { expiresAt },
+        );
         setShare(s);
-        setStatus('已开启分享');
+        setStatus(
+          expiresAt ? `已开启分享（${formatShareExpiry(s.expiresAt)}）` : '已开启分享（永久）',
+        );
       }
     } catch (e) {
       setStatus(e instanceof ApiError ? e.message : '分享操作失败');
+    }
+  }
+
+  async function applyShareExpiry() {
+    if (!selected || selected.type !== 'doc' || !share?.enabled) return;
+    try {
+      const expiresAt = expiresAtFromPreset(shareExpiryPreset);
+      const s = await shareApi.enable(selected.id, { expiresAt });
+      setShare(s);
+      setStatus(`已更新分享：${formatShareExpiry(s.expiresAt)}`);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? e.message : '更新有效期失败');
     }
   }
 
@@ -617,6 +644,23 @@ export function KbWorkspacePage() {
                 <button type="button" className="btn primary small" onClick={() => void save()}>
                   保存
                 </button>
+                <label className="share-expiry-inline">
+                  <span className="muted">有效期</span>
+                  <select
+                    className="input small"
+                    value={shareExpiryPreset}
+                    onChange={(e) =>
+                      setShareExpiryPreset(e.target.value as ShareExpiryPreset)
+                    }
+                    aria-label="分享有效期"
+                  >
+                    {SHARE_EXPIRY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   type="button"
                   className="btn secondary small"
@@ -624,6 +668,15 @@ export function KbWorkspacePage() {
                 >
                   {share?.enabled ? '关闭分享' : '开启分享'}
                 </button>
+                {share?.enabled && (
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    onClick={() => void applyShareExpiry()}
+                  >
+                    更新有效期
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn secondary small danger-outline"
@@ -660,9 +713,16 @@ export function KbWorkspacePage() {
               </div>
             )}
             {publicShareUrl && share?.token && (
-              <div className="share-link">
+              <div
+                className={`share-link${isShareExpired(share.expiresAt) ? ' share-link--expired' : ''}`}
+              >
                 <div className="row" style={{ width: '100%' }}>
                   <span className="share-link-label">公开链接</span>
+                  {isShareExpired(share.expiresAt) ? (
+                    <span className="badge badge-warn">已过期</span>
+                  ) : (
+                    <span className="muted">{formatShareExpiry(share.expiresAt)}</span>
+                  )}
                   <button type="button" className="btn secondary small" onClick={() => void copyShareUrl()}>
                     复制链接
                   </button>
@@ -671,7 +731,13 @@ export function KbWorkspacePage() {
                 <a className="share-link-url" href={publicShareUrl} target="_blank" rel="noreferrer">
                   {publicShareUrl}
                 </a>
-                <p className="hint">也可在站内打开： <Link to={`/s/${share.token}`}>预览分享页</Link></p>
+                {isShareExpired(share.expiresAt) ? (
+                  <p className="hint warn">链接已过期，公开访问返回 404。可「更新有效期」或关闭后重新开启。</p>
+                ) : (
+                  <p className="hint">
+                    也可在站内打开： <Link to={`/s/${share.token}`}>预览分享页</Link>
+                  </p>
+                )}
               </div>
             )}
             {docLoading ? (

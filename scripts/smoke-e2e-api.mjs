@@ -180,14 +180,27 @@ async function main() {
   }
   console.log('    content saved v2');
 
-  // 5) Enable share
-  r = await a.req('PUT', `/nodes/${nodeId}/share`, {});
+  // 5) Enable share with future expiresAt
+  const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+  r = await a.req('PUT', `/nodes/${nodeId}/share`, { expiresAt });
   assertOk('share enable', r);
   const token = r.json.data?.token;
   if (!token || !r.json.data?.enabled) {
     throw new Error(`share enable: bad payload ${JSON.stringify(r.json)}`);
   }
-  console.log(`    share enabled token=${token.slice(0, 8)}…`);
+  if (!r.json.data?.expiresAt) {
+    throw new Error(`share enable: missing expiresAt ${JSON.stringify(r.json)}`);
+  }
+  console.log(`    share enabled token=${token.slice(0, 8)}… expiresAt=${r.json.data.expiresAt}`);
+
+  // 5b) Past expiresAt → 400
+  r = await a.req('PUT', `/nodes/${nodeId}/share`, {
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+  });
+  if (r.status !== 400 || r.json.success) {
+    throw new Error(`share past expiresAt: expected 400, got ${r.status} ${JSON.stringify(r.json)}`);
+  }
+  console.log('    share past expiresAt rejected');
 
   // 6) Public read without session
   r = await anon.req('GET', `/share/${token}`, undefined, { auth: false });
