@@ -2,6 +2,7 @@ import { apiRequest } from './client';
 import type {
   ContentMeta,
   DocumentContent,
+  KbMember,
   PublicKb,
   PublicNode,
   PublicUser,
@@ -106,4 +107,21 @@ export const shareApi = {
   disable: (nodeId: string) =>
     apiRequest<null>(`/nodes/${nodeId}/share`, { method: 'DELETE' }),
   publicGet: (token: string) => apiRequest<SharedDocument>(`/share/${token}`),
+};
+
+export const membersApi = {
+  list: (kbId: string) =>
+    apiRequest<{ items: KbMember[] }>(`/kbs/${kbId}/members`),
+  add: (kbId: string, mobileE164: string, role: 'editor' | 'reader') =>
+    apiRequest<KbMember>(`/kbs/${kbId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ mobileE164, role }),
+    }),
+  updateRole: (kbId: string, userId: string, role: 'editor' | 'reader') =>
+    apiRequest<KbMember>(`/kbs/${kbId}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }),
+  remove: (kbId: string, userId: string) =>
+    apiRequest<null>(`/kbs/${kbId}/members/${userId}`, { method: 'DELETE' }),
 };

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { contentApi, kbApi, shareApi, treeApi } from '../api/endpoints';
 import { ApiError } from '../api/types';
 import type { PublicKb, PublicNode, ShareInfo } from '../api/types';
+import { MembersPanel } from '../components/MembersPanel';
 import { StatePanel } from '../components/StatePanel';
 import {
   buildMoveParentOptions,
@@ -435,6 +436,7 @@ export function KbWorkspacePage() {
               </button>
             </div>
           )}
+          <MembersPanel kb={kb} />
         </div>
         <div className="tree-actions">
           <div className="row">
