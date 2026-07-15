@@ -35,6 +35,7 @@ export const kbApi = {
       body: JSON.stringify({ name, description }),
     }),
   get: (kbId: string) => apiRequest<PublicKb>(`/kbs/${kbId}`),
+  remove: (kbId: string) => apiRequest<null>(`/kbs/${kbId}`, { method: 'DELETE' }),
 };
 
 export const treeApi = {
