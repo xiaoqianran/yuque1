@@ -10,6 +10,12 @@ export type PublicNode = {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /** Present when listing trash (soft-deleted). */
+  deletedAt?: string | null;
+};
+
+export type TrashNode = PublicNode & {
+  deletedAt: string;
 };
 
 export type ServiceErr = {

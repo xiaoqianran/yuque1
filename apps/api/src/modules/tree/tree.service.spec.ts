@@ -51,16 +51,26 @@ function mockPrisma(store: Store) {
       }: {
         where: {
           knowledgeBaseId?: string;
-          deletedAt: null;
+          deletedAt?: null | { not: null };
           title?: { contains: string; mode: string };
         };
         take?: number;
       }) => {
-        let rows = store.nodes.filter(
-          (n) =>
-            !n.deletedAt &&
-            (!where.knowledgeBaseId || n.knowledgeBaseId === where.knowledgeBaseId),
-        );
+        let rows = store.nodes.filter((n) => {
+          if (where.knowledgeBaseId && n.knowledgeBaseId !== where.knowledgeBaseId) {
+            return false;
+          }
+          if (where.deletedAt === null && n.deletedAt) return false;
+          if (
+            where.deletedAt &&
+            typeof where.deletedAt === 'object' &&
+            where.deletedAt.not === null &&
+            !n.deletedAt
+          ) {
+            return false;
+          }
+          return true;
+        });
         if (where.title?.contains) {
           const q = where.title.contains.toLowerCase();
           rows = rows.filter((n) => n.title.toLowerCase().includes(q));
@@ -81,6 +91,14 @@ function mockPrisma(store: Store) {
           if (where.knowledgeBaseId && n.knowledgeBaseId !== where.knowledgeBaseId)
             return false;
           if (where.deletedAt === null && n.deletedAt) return false;
+          if (
+            where.deletedAt &&
+            typeof where.deletedAt === 'object' &&
+            (where.deletedAt as { not?: null }).not === null &&
+            !n.deletedAt
+          ) {
+            return false;
+          }
           return true;
         });
         if (!row) return null;
@@ -266,6 +284,68 @@ describe('TreeService', () => {
   it('reader cannot create (404)', async () => {
     store.members[0].role = 'reader';
     const r = await svc.create('u1', 'kb1', { type: 'doc', title: 'X' });
+    assert.equal(r.ok, false);
+    if (r.ok) return;
+    assert.equal(r.http, 404);
+  });
+
+  it('lists trash and restores soft-deleted node', async () => {
+    const doc = await svc.create('u1', 'kb1', { type: 'doc', title: 'Gone' });
+    assert.equal(doc.ok, true);
+    if (!doc.ok) return;
+    const del = await svc.delete('u1', doc.data.id);
+    assert.equal(del.ok, true);
+
+    const tree = await svc.getTree('u1', 'kb1');
+    assert.equal(tree.ok, true);
+    if (!tree.ok) return;
+    assert.equal(tree.data.items.length, 0);
+
+    const trash = await svc.listTrash('u1', 'kb1');
+    assert.equal(trash.ok, true);
+    if (!trash.ok) return;
+    assert.equal(trash.data.items.length, 1);
+    assert.equal(trash.data.items[0].title, 'Gone');
+    assert.ok(trash.data.items[0].deletedAt);
+
+    const restored = await svc.restore('u1', doc.data.id);
+    assert.equal(restored.ok, true);
+    if (!restored.ok) return;
+    assert.equal(restored.data.title, 'Gone');
+
+    const tree2 = await svc.getTree('u1', 'kb1');
+    assert.equal(tree2.ok, true);
+    if (!tree2.ok) return;
+    assert.equal(tree2.data.items.length, 1);
+  });
+
+  it('restore reparents to root when parent deleted', async () => {
+    const folder = await svc.create('u1', 'kb1', { type: 'folder', title: 'P' });
+    assert.equal(folder.ok, true);
+    if (!folder.ok) return;
+    const child = await svc.create('u1', 'kb1', {
+      type: 'doc',
+      title: 'C',
+      parentId: folder.data.id,
+    });
+    assert.equal(child.ok, true);
+    if (!child.ok) return;
+    await svc.delete('u1', child.data.id);
+    await svc.delete('u1', folder.data.id);
+
+    const restored = await svc.restore('u1', child.data.id);
+    assert.equal(restored.ok, true);
+    if (!restored.ok) return;
+    assert.equal(restored.data.parentId, null);
+  });
+
+  it('reader cannot restore', async () => {
+    const doc = await svc.create('u1', 'kb1', { type: 'doc', title: 'R' });
+    assert.equal(doc.ok, true);
+    if (!doc.ok) return;
+    await svc.delete('u1', doc.data.id);
+    store.members[0].role = 'reader';
+    const r = await svc.restore('u1', doc.data.id);
     assert.equal(r.ok, false);
     if (r.ok) return;
     assert.equal(r.http, 404);
