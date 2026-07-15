@@ -19,7 +19,10 @@ import {
   type SiblingReorderDirection,
 } from '../ui/treeOps';
 import { duplicateTitle } from '../ui/duplicateDoc';
-import { confirmDeleteNodeMessage } from '../ui/urls';
+import {
+  confirmDeleteNodeMessage,
+  confirmPurgeNodeMessage,
+} from '../ui/urls';
 import { useDocumentAutosave } from './useDocumentAutosave';
 import { useDocumentEditor } from './useDocumentEditor';
 import { useDocumentSelection } from './useDocumentSelection';
@@ -56,6 +59,9 @@ export function useKnowledgeWorkspace(kbId: string) {
   const [moveTarget, setMoveTarget] = useState<PublicNode | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PublicNode | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<PublicNode | null>(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+  const [purgingId, setPurgingId] = useState<string | null>(null);
   const [renameNodeId, setRenameNodeId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState('');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -478,6 +484,23 @@ export function useKnowledgeWorkspace(kbId: string) {
     [canWrite, refreshTree, loadTrash, openNode, setSelected],
   );
 
+  const confirmPurge = useCallback(async () => {
+    if (!purgeTarget || !canWrite) return;
+    setPurgeBusy(true);
+    setPurgingId(purgeTarget.id);
+    try {
+      await treeApi.purge(purgeTarget.id);
+      setStatus(`已永久删除「${purgeTarget.title}」`);
+      setPurgeTarget(null);
+      await loadTrash();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : '永久删除失败');
+    } finally {
+      setPurgeBusy(false);
+      setPurgingId(null);
+    }
+  }, [purgeTarget, canWrite, loadTrash]);
+
   const runSearch = useCallback(async () => {
     const q = searchQ.trim();
     if (!q) {
@@ -612,6 +635,11 @@ export function useKnowledgeWorkspace(kbId: string) {
     return confirmDeleteNodeMessage(deleteTarget.title, deleteTarget.type);
   }, [deleteTarget]);
 
+  const purgeMessage = useMemo(() => {
+    if (!purgeTarget) return '';
+    return confirmPurgeNodeMessage(purgeTarget.title, purgeTarget.type);
+  }, [purgeTarget]);
+
   const expandAll = useCallback(() => setCollapsedIds(new Set()), [setCollapsedIds]);
   const collapseAll = useCallback(() => {
     setCollapsedIds(new Set(collectParentIdsWithChildren(nodes)));
@@ -703,6 +731,12 @@ export function useKnowledgeWorkspace(kbId: string) {
     deleteBusy,
     deleteMessage,
     confirmDelete,
+    purgeTarget,
+    setPurgeTarget,
+    purgeBusy,
+    purgingId,
+    purgeMessage,
+    confirmPurge,
     saveKbMeta,
     kbSaving,
     enableShare,

@@ -119,9 +119,16 @@ function mockPrisma(store: Store) {
         const max = rows.reduce((m, n) => Math.max(m, n.sortOrder), 0);
         return { _max: { sortOrder: rows.length ? max : null } };
       },
-      count: async ({ where }: { where: { parentId: string; deletedAt: null } }) =>
-        store.nodes.filter((n) => n.parentId === where.parentId && !n.deletedAt)
-          .length,
+      count: async ({
+        where,
+      }: {
+        where: { parentId: string; deletedAt?: null };
+      }) =>
+        store.nodes.filter((n) => {
+          if (n.parentId !== where.parentId) return false;
+          if (where.deletedAt === null && n.deletedAt) return false;
+          return true;
+        }).length,
       create: async ({ data }: { data: Omit<NodeRow, 'createdAt' | 'updatedAt' | 'deletedAt'> }) => {
         const row: NodeRow = {
           ...data,
@@ -143,6 +150,12 @@ function mockPrisma(store: Store) {
         Object.assign(n, data, { updatedAt: new Date() });
         return n;
       },
+      delete: async ({ where }: { where: { id: string } }) => {
+        const idx = store.nodes.findIndex((x) => x.id === where.id);
+        if (idx < 0) throw new Error('not found');
+        const [row] = store.nodes.splice(idx, 1);
+        return row;
+      },
     },
     documentContent: {
       create: async ({
@@ -156,6 +169,16 @@ function mockPrisma(store: Store) {
           contentVersion: data.contentVersion,
         });
         return data;
+      },
+      deleteMany: async ({ where }: { where: { nodeId: string } }) => {
+        const before = store.contents.length;
+        store.contents = store.contents.filter((c) => c.nodeId !== where.nodeId);
+        return { count: before - store.contents.length };
+      },
+    },
+    contentRevision: {
+      deleteMany: async ({ where }: { where: { nodeId: string } }) => {
+        return { count: 0, nodeId: where.nodeId };
       },
     },
     shareLink: {
@@ -172,6 +195,11 @@ function mockPrisma(store: Store) {
           }
         }
         return { count: 1 };
+      },
+      deleteMany: async ({ where }: { where: { nodeId: string } }) => {
+        const before = store.shares.length;
+        store.shares = store.shares.filter((s) => s.nodeId !== where.nodeId);
+        return { count: before - store.shares.length };
       },
     },
     auditLog: {
@@ -346,6 +374,74 @@ describe('TreeService', () => {
     await svc.delete('u1', doc.data.id);
     store.members[0].role = 'reader';
     const r = await svc.restore('u1', doc.data.id);
+    assert.equal(r.ok, false);
+    if (r.ok) return;
+    assert.equal(r.http, 404);
+  });
+
+  it('purges soft-deleted node permanently', async () => {
+    const doc = await svc.create('u1', 'kb1', { type: 'doc', title: 'Bye' });
+    assert.equal(doc.ok, true);
+    if (!doc.ok) return;
+    await svc.delete('u1', doc.data.id);
+    assert.equal(store.contents.length, 1);
+
+    const purged = await svc.purge('u1', doc.data.id);
+    assert.equal(purged.ok, true);
+    assert.equal(store.nodes.length, 0);
+    assert.equal(store.contents.length, 0);
+    assert.ok(
+      store.audits.some(
+        (a) => (a as { action?: string }).action === 'node.purge',
+      ),
+    );
+
+    const trash = await svc.listTrash('u1', 'kb1');
+    assert.equal(trash.ok, true);
+    if (!trash.ok) return;
+    assert.equal(trash.data.items.length, 0);
+  });
+
+  it('purge rejects live nodes and missing nodes', async () => {
+    const doc = await svc.create('u1', 'kb1', { type: 'doc', title: 'Live' });
+    assert.equal(doc.ok, true);
+    if (!doc.ok) return;
+    const live = await svc.purge('u1', doc.data.id);
+    assert.equal(live.ok, false);
+    if (live.ok) return;
+    assert.equal(live.http, 404);
+
+    const missing = await svc.purge('u1', '01MISSING00000000000000000');
+    assert.equal(missing.ok, false);
+  });
+
+  it('purge rejects when soft-deleted children remain', async () => {
+    const folder = await svc.create('u1', 'kb1', { type: 'folder', title: 'F' });
+    assert.equal(folder.ok, true);
+    if (!folder.ok) return;
+    const child = await svc.create('u1', 'kb1', {
+      type: 'doc',
+      title: 'C',
+      parentId: folder.data.id,
+    });
+    assert.equal(child.ok, true);
+    if (!child.ok) return;
+    await svc.delete('u1', child.data.id);
+    await svc.delete('u1', folder.data.id);
+
+    const purged = await svc.purge('u1', folder.data.id);
+    assert.equal(purged.ok, false);
+    if (purged.ok) return;
+    assert.equal(purged.code, 'NODE_HAS_CHILDREN');
+  });
+
+  it('reader cannot purge', async () => {
+    const doc = await svc.create('u1', 'kb1', { type: 'doc', title: 'X' });
+    assert.equal(doc.ok, true);
+    if (!doc.ok) return;
+    await svc.delete('u1', doc.data.id);
+    store.members[0].role = 'reader';
+    const r = await svc.purge('u1', doc.data.id);
     assert.equal(r.ok, false);
     if (r.ok) return;
     assert.equal(r.http, 404);

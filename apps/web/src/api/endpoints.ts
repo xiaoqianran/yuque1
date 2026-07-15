@@ -87,6 +87,9 @@ export const treeApi = {
     apiRequest<null>(`/nodes/${nodeId}`, { method: 'DELETE' }),
   restore: (nodeId: string) =>
     apiRequest<PublicNode>(`/nodes/${nodeId}/restore`, { method: 'POST' }),
+  /** Hard-delete a soft-deleted node (trash permanent). */
+  purge: (nodeId: string) =>
+    apiRequest<null>(`/nodes/${nodeId}/permanent`, { method: 'DELETE' }),
 };
 
 export const contentApi = {

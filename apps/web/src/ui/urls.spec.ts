@@ -4,6 +4,7 @@ import {
   buildPublicShareUrl,
   confirmDeleteKbMessage,
   confirmDeleteNodeMessage,
+  confirmPurgeNodeMessage,
 } from './urls';
 
 describe('buildPublicShareUrl', () => {
@@ -41,7 +42,14 @@ describe('confirm delete messages', () => {
     const m = confirmDeleteNodeMessage('规范', 'doc');
     assert.match(m, /规范/);
     assert.match(m, /文档/);
-    assert.match(m, /软删|不可撤销/);
+    assert.match(m, /回收站|软删/);
+  });
+
+  it('purge message warns irreversible', () => {
+    const m = confirmPurgeNodeMessage('废稿', 'doc');
+    assert.match(m, /废稿/);
+    assert.match(m, /永久/);
+    assert.match(m, /不可恢复/);
   });
 
   it('mentions kb name', () => {
